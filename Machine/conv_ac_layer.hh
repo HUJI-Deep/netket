@@ -16,6 +16,9 @@
 #include <Eigen/Dense>
 #include <random>
 #include <vector>
+#include <Json/json.hh>
+
+#include "abstract_layer.hh"
 
 #ifndef NETKET_CONV_AC_LAYER_HH
 #define NETKET_CONV_AC_LAYER_HH
@@ -43,48 +46,14 @@ template<typename T> class ConvACLayer : public AbstractLayer<T>{
 
 public:
 
-  using StateType=typename AbstractMachine<T>::StateType;
-  using LookupType=typename AbstractMachine<T>::LookupType;
+  using StateType=typename ConvACLayer<T>::StateType;
+  using LookupType=typename ConvACLayer<T>::LookupType;
 
   ConvACLayer(const json & pars, int number_of_input_channels):
     number_of_input_channels_(number_of_input_channels){
     from_json(pars);
   }
 
-  void Init(){
-    W_.resize(nv_,nh_);
-    a_.resize(nv_);
-    b_.resize(nh_);
-
-    thetas_.resize(nh_);
-    lnthetas_.resize(nh_);
-    thetasnew_.resize(nh_);
-    lnthetasnew_.resize(nh_);
-
-    npar_=nv_*nh_;
-
-    if(usea_){
-      npar_+=nv_;
-    }
-    else{
-      a_.setZero();
-    }
-
-    if(useb_){
-      npar_+=nh_;
-    }
-    else{
-      b_.setZero();
-    }
-
-    MPI_Comm_rank(MPI_COMM_WORLD, &mynode_);
-
-    if(mynode_==0){
-      cout<<"# RBM Initizialized with nvisible = "<<nv_<<" and nhidden = "<<nh_<<endl;
-      cout<<"# Using visible bias = "<<usea_<<endl;
-      cout<<"# Using hidden bias  = "<<useb_<<endl;
-    }
-  }
 
   int Nvisible()const{
     return number_of_input_channels_;
@@ -94,9 +63,9 @@ public:
     return number_of_input_channels_ * number_of_output_channels_ * kernel_height_ * kernel_width_;
   }
 
-  void InitRandomPars(int seed,double sigma){
+  void InitRandomPars(default_random_engine& generator,double sigma){
 
-    VectorType par(npar_);
+    VectorType par(Npar());
 
     RandomGaussian(par,seed,sigma);
 
@@ -316,7 +285,7 @@ public:
   void assert_json_layer_name(const json & pars){
     if(pars.at("Layer").at("Name")!="ConvACLayer"){
       if(mynode_==0){
-        cerr<<"# Error while constructing ConvACLayer from Json input"<<endl;
+        cerr <<"# Error while constructing ConvACLayer from Json input" << endl;
       }
       std::abort();
     }

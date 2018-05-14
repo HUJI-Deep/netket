@@ -2,65 +2,88 @@
 #define NETKET_CONV_AC_HH
 
 #include "abstract_machine.hh"
+#include "abstract_layer.hh"
 
-namespace netket{
+namespace netket {
 
 using namespace std;
 using namespace Eigen;
 
-template<typename T> class ConvAC : public AbstractMachine<T> {
+template<typename T>
+class ConvAC : public AbstractMachine<T> {
 public:
 
 
     using VectorType=typename AbstractMachine<T>::VectorType;
     using MatrixType=typename AbstractMachine<T>::MatrixType;
+    using StateType = typename AbstractMachine<T>::StateType;
+    using LookupType = typename AbstractMachine<T>::LookupType;
 
     int number_of_visible_units_;
     int my_mpi_node_;
-    unsigned int num_of_layers;
+    vector<unique_ptr<AbstractLayer<T>>> layers_;
 
-    const Hilbert & hilbert_;
+    const Hilbert &hilbert_;
 
 
-    ConvAC(const Hilbert & hilbert,const json & pars):
-        number_of_visible_units_(hilbert.Size()),
-        hilbert_(hilbert){
-
+    ConvAC(const Hilbert &hilbert, const json &pars) :
+            number_of_visible_units_(hilbert.Size()),
+            hilbert_(hilbert) {
         from_json(pars);
+        InirMPI();
+    }
 
+    void InirMPI() {
         MPI_Comm_rank(MPI_COMM_WORLD, &my_mpi_node_);
-
-        if(my_mpi_node_==0){
-            cout<<"# ConvAC Initizialized with nvisible = "<<number_of_cisible_units_<<endl;
+        if (my_mpi_node_ == 0) {
+            cout << "# ConvAC Initizialized with nvisible = "
+                 << number_of_visible_units_ << endl;
         }
     }
 
     int Npar() const override {
-        return 0;
+        int num_of_params = 0;
+        for(auto const& layer: layers_) {
+            num_of_params += layer->Npar();
+        }
+        return num_of_params;
     }
 
     VectorType GetParameters() override {
-        return nullptr;
+        VectorType parameters(Npar());
+        int start_idx = 0;
+        for(auto const& layer: layers_) {
+            layer->GetParameters(parameters, start_idx);
+            start_idx += layer->Npar();
+        }
+        return parameters;
     }
 
-    void SetParameters(const VectorType &pars) override {
-
+    void SetParameters(const VectorType &parameters) override {
+        int start_idx = 0;
+        for(auto const& layer: layers_) {
+            layer->SetParameters(parameters, start_idx);
+            start_idx += layer->Npar();
+        }
     }
 
     void InitRandomPars(int seed, double sigma) override {
-
+        std::default_random_engine generator(seed);
+        for(auto const& layer: layers_) {
+            layer->InitRandomPars(generator, sigma);
+        }
     }
 
     int Nvisible() const override {
-        return 0;
+        return number_of_visible_units_;
     }
 
     T LogVal(const VectorXd &v) override {
-        return nullptr;
+        return T{};
     }
 
     T LogVal(const VectorXd &v, LookupType &lt) override {
-        return nullptr;
+        return T{};
     }
 
     void InitLookup(const VectorXd &v, LookupType &lt) override {
@@ -75,46 +98,48 @@ public:
     VectorType
     LogValDiff(const VectorXd &v, const vector<vector<int> > &tochange,
                const vector<vector<double>> &newconf) override {
-        return nullptr;
+        return VectorType{};
     }
 
     T LogValDiff(const VectorXd &v, const vector<int> &toflip,
                  const vector<double> &newconf, const LookupType &lt) override {
-        return nullptr;
+        return T{};
     }
 
     VectorType DerLog(const VectorXd &v) override {
-        return nullptr;
+        return VectorType{};
     }
 
     void to_json(json &j) const override {
 
     }
 
-    void from_json(const json & pars) override {
-        if(pars.at("Machine").at("Name")!="RbmSpin"){
-            if(my_mpi_node_==0){
-                std::cerr<<"# Error while constructing RbmSpin from Json input"<<endl;
+    void from_json(const json &pars) override {
+        if (pars.at("Machine").at("Name") != "RbmSpin") {
+            if (my_mpi_node_ == 0) {
+                std::cerr
+                        << "# Error while constructing RbmSpin from Json input"
+                        << endl;
             }
             std::abort();
         }
-        if(FieldExists(pars["Machine"],"Nvisible")){
-          number_of_visible_units_=pars["Machine"]["Nvisible"];
+        if (FieldExists(pars["Machine"], "Nvisible")) {
+            number_of_visible_units_ = pars["Machine"]["Nvisible"];
         }
-        if(number_of_visible_units_!=hilbert_.Size()){
-          if(mynode_==0){
-            cerr<<"# Number of visible units is incompatible with given Hilbert space"<<endl;
-          }
-          std::abort();
+        if (number_of_visible_units_ != hilbert_.Size()) {
+            if (my_mpi_node_ == 0) {
+                cerr << "# Number of visible units is incompatible with given Hilbert space" << endl;
+            }
+            std::abort();
         }
-        if(FieldExists(pars["Machine"],"Layers")){
-          if(mynode_==0){
-            cerr<<"# ConvAC Machines must have layers attribute"<<endl;
-          }
-          std::abort();
+        if (FieldExists(pars["Machine"], "Layers")) {
+            if (my_mpi_node_ == 0) {
+                cerr << "# ConvAC Machines must have layers attribute" << endl;
+            }
+            std::abort();
         }
     }
-}
+};
 }
 
 #endif //NETKET_CONV_AC_HH
