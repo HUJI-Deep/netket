@@ -15,82 +15,95 @@
 #ifndef NETKET_HILBERT_HH
 #define NETKET_HILBERT_HH
 
-#include <memory>
+#include "Parallel/parallel.hh"
 #include "abstract_hilbert.hh"
-#include "next_variation.hh"
-#include "spins.hh"
 #include "bosons.hh"
-#include "qubits.hh"
 #include "custom_hilbert.hh"
+#include "next_variation.hh"
+#include "qubits.hh"
+#include "spins.hh"
+#include "Json/json.hh"
+#include <memory>
+#include <set>
 
+namespace netket {
 
-namespace netket{
+class Hilbert : public AbstractHilbert {
 
-class Hilbert:public AbstractHilbert{
-
-  using Ptype=std::unique_ptr<AbstractHilbert>;
-  Ptype h_;
+  std::shared_ptr<AbstractHilbert> h_;
 
 public:
+  explicit Hilbert() {}
 
-  Hilbert(){
+  explicit Hilbert(const Hilbert &oh) { h_ = oh.h_; }
 
+  explicit Hilbert(const json &pars) { Init(pars); }
+
+  void Init(const json &pars) {
+    CheckInput(pars);
+
+    if (FieldExists(pars["Hilbert"], "Name")) {
+      if (pars["Hilbert"]["Name"] == "Spin") {
+        h_ = std::make_shared<Spin>(pars);
+      } else if (pars["Hilbert"]["Name"] == "Boson") {
+        h_ = std::make_shared<Boson>(pars);
+      } else if (pars["Hilbert"]["Name"] == "Qubit") {
+        h_ = std::make_shared<Qubit>(pars);
+      }
+    } else {
+      h_ = std::make_shared<CustomHilbert>(pars);
+    }
   }
 
-  Hilbert(const json & pars){
-    Init(pars);
-  }
+  void CheckInput(const json &pars) {
+    int mynode;
+    MPI_Comm_rank(MPI_COMM_WORLD, &mynode);
 
-  void Init(const json & pars){
-    if(!FieldExists(pars,"Hilbert")){
-      cerr<<"Hilbert is not defined in the input"<<endl;
-      std::abort();
+    if (!FieldExists(pars, "Hilbert")) {
+      if (!FieldExists(pars, "Hamiltonian")) {
+        if (mynode == 0)
+          std::cerr << "Not enough information to construct Hilbert space"
+                    << std::endl;
+        std::abort();
+      } else {
+        if (!FieldExists(pars["Hamiltonian"], "Name")) {
+          if (mynode == 0)
+            std::cerr << "Not enough information to construct Hilbert space"
+                      << std::endl;
+          std::abort();
+        }
+      }
     }
 
-    if(FieldExists(pars["Hilbert"],"Name")){
-      if(pars["Hilbert"]["Name"]=="Spin"){
-        h_=Ptype(new Spin(pars));
-      }
-      else if(pars["Hilbert"]["Name"]=="Boson"){
-        h_=Ptype(new Boson(pars));
-      }
-      else if(pars["Hilbert"]["Name"]=="Qubit"){
-        h_=Ptype(new Qubit(pars));
-      }
-      else{
-        cout<<"Hilbert Name not found"<<endl;
+    if (FieldExists(pars["Hilbert"], "Name")) {
+      std::set<std::string> hilberts = {"Spin", "Boson", "Qubit"};
+
+      const auto name = pars["Hilbert"]["Name"];
+
+      if (hilberts.count(name) == 0) {
+        std::cerr << "Hilbert " << name << " not found." << std::endl;
         std::abort();
       }
     }
-    else{
-      h_=Ptype(new CustomHilbert(pars));
-    }
   }
 
-  bool IsDiscrete()const{
-    return h_->IsDiscrete();
+  bool IsDiscrete() const { return h_->IsDiscrete(); }
+
+  int LocalSize() const { return h_->LocalSize(); }
+
+  int Size() const { return h_->Size(); }
+
+  std::vector<double> LocalStates() const { return h_->LocalStates(); }
+
+  void RandomVals(Eigen::VectorXd &state,
+                  netket::default_random_engine &rgen) const {
+    return h_->RandomVals(state, rgen);
   }
 
-  int LocalSize()const{
-    return h_->LocalSize();
-  }
-
-  int Size()const{
-    return h_->Size();
-  }
-
-  vector<double> LocalStates()const{
-    return h_->LocalStates();
-  }
-
-  void RandomVals(VectorXd & state,netket::default_random_engine & rgen)const{
-    return h_->RandomVals(state,rgen);
-  }
-
-  void UpdateConf(VectorXd & v,const vector<int>  & tochange,
-    const vector<double> & newconf)const{
-    return h_->UpdateConf(v,tochange,newconf);
+  void UpdateConf(Eigen::VectorXd &v, const std::vector<int> &tochange,
+                  const std::vector<double> &newconf) const {
+    return h_->UpdateConf(v, tochange, newconf);
   }
 };
-}
+} // namespace netket
 #endif

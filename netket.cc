@@ -12,24 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <iostream>
-#include <fstream>
 #include "netket.hh"
+#include <iostream>
+#include <mpi.h>
 
-using namespace std;
-using namespace netket;
+int main(int argc, char *argv[]) {
+  MPI_Init(&argc, &argv);
 
-int main(int argc,char * argv[]){
-  MPI_Init(&argc,&argv);
-
-  if(argc!=2){
-    cerr<<"Insert name of input Json file"<<endl;
+  if (argc != 2) {
+    std::cerr << "Insert name of input Json file" << std::endl;
     std::abort();
   }
 
-  auto pars=ReadJsonFromFile(argv[1]);
+  auto pars = netket::ReadJsonFromFile(argv[1]);
 
-  Learning learning(pars);
+  netket::Learning learning(pars);
 
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();

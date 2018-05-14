@@ -1,4 +1,3 @@
-
 include_directories(${EXTERNAL_INCLUDE_DIR}/Catch)
 
 add_library(catch_main OBJECT
@@ -6,13 +5,7 @@ add_library(catch_main OBJECT
 )
 
 
-
-include_directories(InputTests/)
-
-
-
-
-file(GLOB TEST_SOURCES Graph/*.cc Machine/*.cc)
+file(GLOB TEST_SOURCES Graph/*.cc Machine/*.cc Hilbert/*.cc)
 
 foreach(file ${TEST_SOURCES})
    get_filename_component(file_basename ${file} NAME_WE)
