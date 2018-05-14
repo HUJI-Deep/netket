@@ -23,6 +23,7 @@
 #include "rbm_spin.hh"
 #include "rbm_spin_symm.hh"
 #include "rbm_multival.hh"
+#include "conv_ac.hh"
 
 namespace netket{
 
@@ -79,6 +80,9 @@ public:
     }
     else if(pars["Machine"]["Name"]=="RbmMultival"){
       m_=Ptype(new RbmMultival<T>(hilbert,pars));
+    }
+    else if(pars["Machine"]["Name"]=="ConvAC"){
+      m_=Ptype(new ConvAC<T>(hilbert,pars));
     }
   }
 
@@ -140,7 +144,8 @@ public:
     {
       "RbmSpin",
       "RbmSpinSymm",
-      "RbmMultival"
+      "RbmMultival",
+      "ConvAC"
     };
 
     const auto name=pars["Machine"]["Name"];
