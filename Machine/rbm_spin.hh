@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "Lookup/lookup.hh"
+#include "random.hh"
 #include <Eigen/Dense>
 #include <iostream>
 #include <random>
@@ -116,7 +117,7 @@ public:
 
     VectorType par(npar_);
 
-    RandomGaussian(par, seed, sigma);
+    Random<T>::RandomGaussian(par, seed, sigma);
 
     SetParameters(par);
   }
@@ -302,26 +303,6 @@ public:
       logvaldiff += (lnthetasnew_.sum() - lnthetas_.sum());
     }
     return logvaldiff;
-  }
-
-  static void RandomGaussian(Eigen::Matrix<double, Eigen::Dynamic, 1> &par,
-                             int seed, double sigma) {
-    std::default_random_engine generator(seed);
-    std::normal_distribution<double> distribution(0, sigma);
-    for (int i = 0; i < par.size(); i++) {
-      par(i) = distribution(generator);
-    }
-  }
-
-  static void
-  RandomGaussian(Eigen::Matrix<std::complex<double>, Eigen::Dynamic, 1> &par,
-                 int seed, double sigma) {
-    std::default_random_engine generator(seed);
-    std::normal_distribution<double> distribution(0, sigma);
-    for (int i = 0; i < par.size(); i++) {
-      par(i) = std::complex<double>(distribution(generator),
-                                    distribution(generator));
-    }
   }
 
   inline static double lncosh(double x) {

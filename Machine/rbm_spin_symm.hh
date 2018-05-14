@@ -194,7 +194,7 @@ public:
 
     VectorType par(npar_);
 
-    RbmSpin<T>::RandomGaussian(par, seed, sigma);
+    Random<T>::RandomGaussian(par, seed, sigma);
 
     SetParameters(par);
   }
