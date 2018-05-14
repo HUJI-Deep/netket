@@ -3,6 +3,7 @@
 
 #include "abstract_machine.hh"
 #include "abstract_layer.hh"
+#include "conv_ac_layer.hh"
 
 namespace netket {
 
@@ -19,8 +20,8 @@ public:
     using StateType = typename AbstractMachine<T>::StateType;
     using LookupType = typename AbstractMachine<T>::LookupType;
 
-    int number_of_visible_units_;
-    int my_mpi_node_;
+    int number_of_visible_units_{};
+    int my_mpi_node_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
 
     const Hilbert &hilbert_;
@@ -87,12 +88,16 @@ public:
     }
 
     void InitLookup(const VectorXd &v, LookupType &lt) override {
-
+        for(auto const& layer: layers_) {
+            layer->InitLookup(v, lt);
+        }
     }
 
     void UpdateLookup(const VectorXd &v, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
-
+        for(auto const& layer: layers_) {
+            layer->UpdateLookup(v, tochange, newconf, lt);
+        }
     }
 
     VectorType
@@ -111,11 +116,18 @@ public:
     }
 
     void to_json(json &j) const override {
-
+        j["Machine"]["Name"] = "ConvAC";
+        j["Machine"]["Nvisible"] = number_of_visible_units_;
+        j["layers"] = json::array();
+        for(auto const& layer: layers_) {
+            json layer_node;
+            layer->to_json(layer_node);
+            j["layers"].push_back(layer_node);
+        }
     }
 
     void from_json(const json &pars) override {
-        if (pars.at("Machine").at("Name") != "RbmSpin") {
+        if (pars.at("Machine").at("Name") != "ConvAC") {
             if (my_mpi_node_ == 0) {
                 std::cerr
                         << "# Error while constructing RbmSpin from Json input"
@@ -137,6 +149,11 @@ public:
                 cerr << "# ConvAC Machines must have layers attribute" << endl;
             }
             std::abort();
+        }
+        int input_dimension = number_of_visible_units_;
+        for(auto const& layer: pars["Machine"]["Layers"]) {
+            layers_.push_back(std::unique_ptr<ConvACLayer<T>>(new ConvACLayer<T>(layer, input_dimension)));
+            input_dimension = layers_.back()->Noutput();
         }
     }
 };

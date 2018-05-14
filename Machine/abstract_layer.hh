@@ -70,6 +70,12 @@ public:
   */
   virtual int Nvisible()const=0;
 
+  /**
+  Member function returning the number of output units.
+  @return Number of output units of the Layer.
+  */
+  virtual int Noutput()const=0;
+
 
   /**
   Member function computing the logarithm of the wave function for a given visible vector.

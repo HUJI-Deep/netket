@@ -23,286 +23,154 @@
 #ifndef NETKET_CONV_AC_LAYER_HH
 #define NETKET_CONV_AC_LAYER_HH
 
-namespace netket{
+namespace netket {
 
 using namespace std;
 using namespace Eigen;
 
 
-template<typename T> class ConvACLayer : public AbstractLayer<T>{
+template<typename T>
+class ConvACLayer : public AbstractLayer<T> {
 
-  using VectorType=typename AbstractLayer<T>::VectorType;
-  using MatrixType=typename AbstractLayer<T>::MatrixType;
+    using VectorType=typename AbstractLayer<T>::VectorType;
+    using MatrixType=typename AbstractLayer<T>::MatrixType;
 
-  int number_of_input_channels_;
-  int number_of_output_channels_;
-  int kernel_width_;
-  int kernel_height_;
-  int strides_width_;
-  int strides_height_;
+    int number_of_input_channels_;
+    int number_of_output_channels_{};
+    int kernel_width_{};
+    int kernel_height_{};
+    int strides_width_{};
+    int strides_height_{};
 
-  MatrixType offsets_weights_;
+    int my_mpi_node_{};
+
+    MatrixType offsets_weights_{};
 
 
 public:
 
-  using StateType=typename ConvACLayer<T>::StateType;
-  using LookupType=typename ConvACLayer<T>::LookupType;
+    using StateType=typename ConvACLayer<T>::StateType;
+    using LookupType=typename ConvACLayer<T>::LookupType;
 
-  ConvACLayer(const json & pars, int number_of_input_channels):
-    number_of_input_channels_(number_of_input_channels){
-    from_json(pars);
-  }
-
-
-  int Nvisible()const{
-    return number_of_input_channels_;
-  }
-
-  int Npar()const{
-    return number_of_input_channels_ * number_of_output_channels_ * kernel_height_ * kernel_width_;
-  }
-
-  void InitRandomPars(default_random_engine& generator,double sigma){
-
-    VectorType par(Npar());
-
-    RandomGaussian(par,seed,sigma);
-
-    SetParameters(par);
-  }
-
-
-  void InitLookup(const VectorXd & v,LookupType & lt){
-    if(lt.VectorSize()==0){
-      lt.AddVector(b_.size());
-    }
-    if(lt.V(0).size()!=b_.size()){
-      lt.V(0).resize(b_.size());
+    ConvACLayer(const json &pars, int number_of_input_channels) :
+            number_of_input_channels_(number_of_input_channels) {
+        MPI_Comm_rank(MPI_COMM_WORLD, &my_mpi_node_);
+        from_json(pars);
     }
 
-    lt.V(0)=(W_.transpose()*v+b_);
-  }
-
-  void UpdateLookup(const VectorXd & v,const vector<int>  & tochange,
-    const vector<double> & newconf,LookupType & lt){
-
-    if(tochange.size()!=0){
-
-      for(std::size_t s=0;s<tochange.size();s++){
-        const int sf=tochange[s];
-        lt.V(0)+=W_.row(sf)*(newconf[s]-v(sf));
-      }
+    void GetParameters(VectorType &out_params, int start_idx) override {
 
     }
-  }
 
-  VectorType DerLog(const VectorXd & v){
-    VectorType der(npar_);
+    void SetParameters(const VectorType &pars, int start_idx) override {
 
-    int k=0;
-
-    if(usea_){
-      for(;k<nv_;k++){
-        der(k)=v(k);
-      }
     }
 
-    RbmSpin::tanh(W_.transpose()*v+b_,lnthetas_);
+    void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
 
-    if(useb_){
-      for(int p=0;p<nh_;p++){
-        der(k)=lnthetas_(p);
-        k++;
-      }
     }
 
-    for(int i=0;i<nv_;i++){
-      for(int j=0;j<nh_;j++){
-        der(k)=lnthetas_(j)*v(i);
-        k++;
-      }
-    }
-    return der;
-  }
+    void
+    UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
+                 const std::vector<double> &newconf, LookupType &lt) override {
 
-
-  VectorType GetParameters(){
-
-    VectorType pars(npar_);
-
-    int k=0;
-
-    if(usea_){
-      for(;k<nv_;k++){
-        pars(k)=a_(k);
-      }
     }
 
-    if(useb_){
-      for(int p=0;p<nh_;p++){
-        pars(k)=b_(p);
-        k++;
-      }
+
+    int Noutput() const override {
+        return number_of_output_channels_;
     }
 
-    for(int i=0;i<nv_;i++){
-      for(int j=0;j<nh_;j++){
-        pars(k)=W_(i,j);
-        k++;
-      }
+
+    int Nvisible() const {
+        return number_of_input_channels_;
     }
 
-    return pars;
-  }
-
-
-  void SetParameters(const VectorType & pars){
-    int k=0;
-
-    if(usea_){
-      for(;k<nv_;k++){
-        a_(k)=pars(k);
-      }
+    int Npar() const {
+        return number_of_input_channels_ * number_of_output_channels_ *
+               kernel_height_ * kernel_width_;
     }
 
-    if(useb_){
-      for(int p=0;p<nh_;p++){
-        b_(p)=pars(k);
-        k++;
-      }
+    void InitRandomPars(std::default_random_engine& generator,double sigma) {
+
     }
 
-    for(int i=0;i<nv_;i++){
-      for(int j=0;j<nh_;j++){
-        W_(i,j)=pars(k);
-        k++;
-      }
+
+    VectorType DerLog(const VectorXd &v) {
+        return VectorType{};
     }
-  }
 
-  //Value of the logarithm of the wave-function
-  T LogVal(const VectorXd & v){
-    RbmSpin::lncosh(W_.transpose()*v+b_,lnthetas_);
+    //Value of the logarithm of the wave-function
+    T LogVal(const VectorXd &v) {
+        return T{};
+    }
 
-    return (v.dot(a_)+lnthetas_.sum());
-  }
+    //Value of the logarithm of the wave-function
+    //using pre-computed look-up tables for efficiency
+    T LogVal(const VectorXd &v, LookupType &lt) {
+        return T{};
+    }
 
-  //Value of the logarithm of the wave-function
-  //using pre-computed look-up tables for efficiency
-  T LogVal(const VectorXd & v,LookupType & lt){
-    RbmSpin::lncosh(lt.V(0),lnthetas_);
+    //Difference between logarithms of values, when one or more visible variables are being flipped
+    VectorType LogValDiff(const VectorXd &v,
+                          const vector<vector<int> > &tochange,
+                          const vector<vector<double>> &newconf) {
 
-    return (v.dot(a_)+lnthetas_.sum());
-  }
+        return VectorType{};
+    }
 
-  //Difference between logarithms of values, when one or more visible variables are being flipped
-  VectorType LogValDiff(const VectorXd & v,
-    const vector<vector<int> >  & tochange,
-    const vector<vector<double>> & newconf){
+    //Difference between logarithms of values, when one or more visible variables are being flipped
+    //Version using pre-computed look-up tables for efficiency on a small number of spin flips
+    T LogValDiff(const VectorXd &v, const vector<int> &tochange,
+                 const vector<double> &newconf, const LookupType &lt) {
+        return T{};
+    }
 
+    void to_json(json &j) const {
+        j["Name"] = "RbmSpin";
+        j["number_of_output_channels"] = number_of_output_channels_;
+        j["kernel_width"] = kernel_width_;
+        j["kernel_height"] = kernel_height_;
+        j["strides_width"] = strides_width_;
+        j["strides_height"] = strides_height_;
+        j["offsets_weights"] = offsets_weights_;
+    }
 
-    const std::size_t nconn=tochange.size();
-    VectorType logvaldiffs=VectorType::Zero(nconn);
-
-    thetas_=(W_.transpose()*v+b_);
-    RbmSpin::lncosh(thetas_,lnthetas_);
-
-    T logtsum=lnthetas_.sum();
-
-    for(std::size_t k=0;k<nconn;k++){
-
-      if(tochange[k].size()!=0){
-
-        thetasnew_=thetas_;
-
-        for(std::size_t s=0;s<tochange[k].size();s++){
-          const int sf=tochange[k][s];
-
-          logvaldiffs(k)+=a_(sf)*(newconf[k][s]-v(sf));
-
-          thetasnew_+=W_.row(sf)*(newconf[k][s]-v(sf));
+    int read_layer_param_from_json(const json &pars, const string &param_name) {
+        if (FieldExists(pars, param_name)) {
+            return FieldVal(pars, param_name);
+        } else {
+            if (my_mpi_node_ == 0) {
+                cerr
+                        << "# Error while constructing ConvACLayer from Json input: missing attribute \""
+                        << param_name << "\"" << endl;
+            }
+            std::abort();
         }
-
-        RbmSpin::lncosh(thetasnew_,lnthetasnew_);
-        logvaldiffs(k)+=lnthetasnew_.sum() - logtsum;
-
-      }
     }
-    return logvaldiffs;
-  }
 
-  //Difference between logarithms of values, when one or more visible variables are being flipped
-  //Version using pre-computed look-up tables for efficiency on a small number of spin flips
-  T LogValDiff(const VectorXd & v,const vector<int>  & tochange,
-    const vector<double> & newconf,const LookupType & lt){
-
-    T logvaldiff=0.;
-
-    if(tochange.size()!=0){
-
-      RbmSpin::lncosh(lt.V(0),lnthetas_);
-
-      thetasnew_=lt.V(0);
-
-      for(std::size_t s=0;s<tochange.size();s++){
-        const int sf=tochange[s];
-
-        logvaldiff+=a_(sf)*(newconf[s]-v(sf));
-
-        thetasnew_+=W_.row(sf)*(newconf[s]-v(sf));
-      }
-
-      RbmSpin::lncosh(thetasnew_,lnthetasnew_);
-      logvaldiff+=(lnthetasnew_.sum()-lnthetas_.sum());
+    void assert_json_layer_name(const json &pars) {
+        if (pars.at("Name") != "ConvACLayer") {
+            if (my_mpi_node_ == 0) {
+                cerr << "# Error while constructing ConvACLayer from Json input"
+                     << endl;
+            }
+            std::abort();
+        }
     }
-    return logvaldiff;
-  }
 
-  void to_json(json &j)const{
-    j["Machine"]["Name"]="RbmSpin";
-    j["Machine"]["Nvisible"]=nv_;
-    j["Machine"]["Nhidden"]=nh_;
-    j["Machine"]["UseVisibleBias"]=usea_;
-    j["Machine"]["UseHiddenBias"]=useb_;
-    j["Machine"]["a"]=a_;
-    j["Machine"]["b"]=b_;
-    j["Machine"]["W"]=W_;
-  }
-
-  int read_layer_param_from_json(const json & pars, const string & param_name){
-    if(FieldExists(pars["Layer"],param_name)){
-      return FieldVal(pars["Layer"],param_name);
+    void from_json(const json &pars) {
+        assert_json_layer_name(pars);
+        number_of_output_channels_ = read_layer_param_from_json(pars,
+                                                                "number_of_output_channels");
+        kernel_width_ = read_layer_param_from_json(pars, "kernel_width");
+        kernel_height_ = read_layer_param_from_json(pars, "kernel_height");
+        strides_width_ = read_layer_param_from_json(pars, "strides_width");
+        strides_height_ = read_layer_param_from_json(pars, "strides_height");
+        if (FieldExists(pars, "offsets_weights_")) {
+            offsets_weights_ = pars["offsets_weights_"];
+        }
     }
-    else{
-      if(mynode_==0){
-        cerr<<"# Error while constructing ConvACLayer from Json input: missing attribute \"" << param_name << "\""<<endl;
-      }
-      std::abort();
-    }    
-  }
-
-  void assert_json_layer_name(const json & pars){
-    if(pars.at("Layer").at("Name")!="ConvACLayer"){
-      if(mynode_==0){
-        cerr <<"# Error while constructing ConvACLayer from Json input" << endl;
-      }
-      std::abort();
-    }
-  }
-
-  void from_json(const json & pars){
-    assert_json_layer_name(pars);   
-    number_of_output_channels_ = read_layer_param_from_json(pars, "number_of_output_channels");
-    kernel_width_ = read_layer_param_from_json(pars, "kernel_width");
-    kernel_height_ = read_layer_param_from_json(pars, "kernel_height");
-    strides_width_ = read_layer_param_from_json(pars, "strides_width");
-    strides_height_ = read_layer_param_from_json(pars, "strides_height");
-    Init();
-    if (FieldExists(pars["Layer"],"offsets_weights_")){
-      offsets_weights_ = pars["Layer"]["offsets_weights_"]
-    }
-  }
 };
 
 
