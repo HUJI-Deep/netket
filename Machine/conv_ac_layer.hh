@@ -167,6 +167,8 @@ public:
         kernel_height_ = read_layer_param_from_json(pars, "kernel_height");
         strides_width_ = read_layer_param_from_json(pars, "strides_width");
         strides_height_ = read_layer_param_from_json(pars, "strides_height");
+        offsets_weights_.resize(number_of_input_channels_ * kernel_height_ * kernel_width_,
+                                number_of_output_channels_);
         if (FieldExists(pars, "offsets_weights_")) {
             offsets_weights_ = pars["offsets_weights_"];
         }
