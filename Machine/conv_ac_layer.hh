@@ -59,11 +59,27 @@ public:
     }
 
     void GetParameters(VectorType &out_params, int start_idx) override {
-
+        int k = start_idx;
+        long num_rows = offsets_weights_.rows();
+        long num_cols = offsets_weights_.cols();
+        for (int i = 0; i < num_rows; i++) {
+            for (int j = 0; j < num_cols; j++) {
+                out_params(k) = offsets_weights_(i, j);
+                k++;
+            }
+        }
     }
 
     void SetParameters(const VectorType &pars, int start_idx) override {
-
+        int k = start_idx;
+        long num_rows = offsets_weights_.rows();
+        long num_cols = offsets_weights_.cols();
+        for (int i = 0; i < num_rows; i++) {
+            for (int j = 0; j < num_cols; j++) {
+                offsets_weights_(i, j) = pars[k];
+                k++;
+            }
+        }
     }
 
     void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
@@ -92,7 +108,9 @@ public:
     }
 
     void InitRandomPars(std::default_random_engine& generator,double sigma) {
-
+        VectorType par(Npar());
+        Random<T>::RandomGaussian(par, generator, sigma);
+        SetParameters(par, 0);
     }
 
 
