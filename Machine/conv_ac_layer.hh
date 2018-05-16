@@ -126,22 +126,36 @@ public:
     //Value of the logarithm of the wave-function
     //using pre-computed look-up tables for efficiency
     T LogVal(const VectorXd &v, LookupType &lt) {
-        return T{};
+        return LogVal(v);
     }
 
     //Difference between logarithms of values, when one or more visible variables are being flipped
     VectorType LogValDiff(const VectorXd &v,
                           const vector<vector<int> > &tochange,
                           const vector<vector<double>> &newconf) {
-
-        return VectorType{};
+        T orig_log_value = LogVal(v);
+        const std::size_t nconn = tochange.size();
+        VectorType logvaldiffs = VectorType::Zero(nconn);
+        for (std::size_t k = 0; k < nconn; k++) {
+            VectorXd new_vector(v);
+            for (std::size_t s = 0; s < tochange[k].size(); s++) {
+                new_vector[tochange[k][s]] = newconf[k][s];
+            }
+            logvaldiffs(k) = LogVal(new_vector) - orig_log_value;
+        }
+        return logvaldiffs;
     }
 
     //Difference between logarithms of values, when one or more visible variables are being flipped
     //Version using pre-computed look-up tables for efficiency on a small number of spin flips
     T LogValDiff(const VectorXd &v, const vector<int> &tochange,
                  const vector<double> &newconf, const LookupType &lt) {
-        return T{};
+        T orig_log_value = LogVal(v);
+        VectorXd new_vector(v);
+        for (std::size_t s = 0; s < tochange.size(); s++) {
+            new_vector[tochange[s]] = newconf[s];
+        }
+        return LogVal(new_vector) - orig_log_value;
     }
 
     void to_json(json &j) const {
