@@ -28,16 +28,27 @@ class CustomHamiltonian : public AbstractHamiltonian {
 public:
   using MatType = LocalOperator::MatType;
 
-  CustomHamiltonian(const json &pars) : hilbert_(pars) {
+  explicit CustomHamiltonian(const json &pars) : hilbert_(pars) {
 
     if (!FieldExists(pars["Hamiltonian"], "Operators")) {
       std::cerr << "Local operators in the Hamiltonian are not defined"
                 << std::endl;
       std::abort();
     }
+
+    if (!pars["Hamiltonian"]["Operators"].is_array()) {
+      std::cerr << "Local operators is not an array" << std::endl;
+      std::abort();
+    }
+
     if (!FieldExists(pars["Hamiltonian"], "ActingOn")) {
       std::cerr << "Local operators support in the Hamiltonian is not defined"
                 << std::endl;
+      std::abort();
+    }
+
+    if (!pars["Hamiltonian"]["ActingOn"].is_array()) {
+      std::cerr << "ActingOn is not an array" << std::endl;
       std::abort();
     }
 
