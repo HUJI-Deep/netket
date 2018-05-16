@@ -28,12 +28,33 @@ namespace netket {
 using namespace std;
 using namespace Eigen;
 
+/**
+ * A helper function to calculate the output dimension's size give the original
+ * size of the image, padding, patch size and stride.
+ * @param  image_size The size of the dimension in the original image
+ * @param  pad_size   The amount of padding to apply to the original image
+ * @param  patch_size The size of the dimension in the patch taken from the image
+ * @param  stride     The patch's stride over the original image
+ * @param  round_down Whether to round down or up when calculating the size
+ * @return            The output size of the patch image
+ * @remarks round_down can be used to control pooling/conv style im2col method.
+ */
+inline int dimension_out_size(const int image_size, const int pad_size, const int patch_size,
+                              const int stride, const bool round_down) {
+    if (round_down) {
+        return (image_size + 2 * pad_size - patch_size) / stride + 1;
+    } else {
+        return static_cast<int>(std::ceil(static_cast<float>(image_size + 2 * pad_size - patch_size) / stride)) + 1;
+    }
+}
+
 
 template<typename T>
 class ConvACLayer : public AbstractLayer<T> {
 
     using VectorType=typename AbstractLayer<T>::VectorType;
     using MatrixType=typename AbstractLayer<T>::MatrixType;
+    using TensorType=typename AbstractLayer<T>::TensorType;
 
     int number_of_input_channels_;
     int number_of_output_channels_{};
@@ -41,10 +62,12 @@ class ConvACLayer : public AbstractLayer<T> {
     int kernel_height_{};
     int strides_width_{};
     int strides_height_{};
+    int padding_width_{};
+    int padding_height_{};
 
     int my_mpi_node_{};
 
-    MatrixType offsets_weights_{};
+    Eigen::Tensor<T, 4> offsets_weights_{};
 
 
 public:
@@ -58,26 +81,30 @@ public:
         from_json(pars);
     }
 
-    void GetParameters(VectorType &out_params, int start_idx) override {
+    void GetParameters(VectorType &out_params, int start_idx) const override {
         int k = start_idx;
-        long num_rows = offsets_weights_.rows();
-        long num_cols = offsets_weights_.cols();
-        for (int i = 0; i < num_rows; i++) {
-            for (int j = 0; j < num_cols; j++) {
-                out_params(k) = offsets_weights_(i, j);
-                k++;
+        for (int c = 0; c < number_of_input_channels_; c++) {
+            for (int i = 0; i < kernel_width_; i++) {
+                for (int j = 0; j < kernel_height_; j++) {
+                    for (int p = 0; p < number_of_output_channels_; p++) {
+                        out_params(k) = offsets_weights_(c, i, j, p);
+                        k++;
+                    }
+                }
             }
         }
     }
 
     void SetParameters(const VectorType &pars, int start_idx) override {
         int k = start_idx;
-        long num_rows = offsets_weights_.rows();
-        long num_cols = offsets_weights_.cols();
-        for (int i = 0; i < num_rows; i++) {
-            for (int j = 0; j < num_cols; j++) {
-                offsets_weights_(i, j) = pars[k];
-                k++;
+        for (int c = 0; c < number_of_input_channels_; c++) {
+            for (int i = 0; i < kernel_width_; i++) {
+                for (int j = 0; j < kernel_height_; j++) {
+                    for (int p = 0; p < number_of_output_channels_; p++) {
+                        offsets_weights_(c, i, j, p) = pars[k];
+                        k++;
+                    }
+                }
             }
         }
     }
@@ -118,45 +145,17 @@ public:
         return VectorType{};
     }
 
-    //Value of the logarithm of the wave-function
-    T LogVal(const VectorXd &v) {
-        return T{};
+    TensorType LogVal(const TensorType &layer_input) {
+
+        return TensorType{};
     }
 
     //Value of the logarithm of the wave-function
     //using pre-computed look-up tables for efficiency
-    T LogVal(const VectorXd &v, LookupType &lt) {
-        return LogVal(v);
+    TensorType LogVal(const TensorType &layer_input, LookupType &lt) {
+        return LogVal(layer_input);
     }
 
-    //Difference between logarithms of values, when one or more visible variables are being flipped
-    VectorType LogValDiff(const VectorXd &v,
-                          const vector<vector<int> > &tochange,
-                          const vector<vector<double>> &newconf) {
-        T orig_log_value = LogVal(v);
-        const std::size_t nconn = tochange.size();
-        VectorType logvaldiffs = VectorType::Zero(nconn);
-        for (std::size_t k = 0; k < nconn; k++) {
-            VectorXd new_vector(v);
-            for (std::size_t s = 0; s < tochange[k].size(); s++) {
-                new_vector[tochange[k][s]] = newconf[k][s];
-            }
-            logvaldiffs(k) = LogVal(new_vector) - orig_log_value;
-        }
-        return logvaldiffs;
-    }
-
-    //Difference between logarithms of values, when one or more visible variables are being flipped
-    //Version using pre-computed look-up tables for efficiency on a small number of spin flips
-    T LogValDiff(const VectorXd &v, const vector<int> &tochange,
-                 const vector<double> &newconf, const LookupType &lt) {
-        T orig_log_value = LogVal(v);
-        VectorXd new_vector(v);
-        for (std::size_t s = 0; s < tochange.size(); s++) {
-            new_vector[tochange[s]] = newconf[s];
-        }
-        return LogVal(new_vector) - orig_log_value;
-    }
 
     void to_json(json &j) const {
         j["Name"] = "RbmSpin";
@@ -165,7 +164,9 @@ public:
         j["kernel_height"] = kernel_height_;
         j["strides_width"] = strides_width_;
         j["strides_height"] = strides_height_;
-        j["offsets_weights"] = offsets_weights_;
+        VectorType params_vector(Npar());
+        GetParameters(params_vector, 0);
+        j["offsets_weights"] = params_vector;
     }
 
     int read_layer_param_from_json(const json &pars, const string &param_name) {
@@ -199,10 +200,12 @@ public:
         kernel_height_ = read_layer_param_from_json(pars, "kernel_height");
         strides_width_ = read_layer_param_from_json(pars, "strides_width");
         strides_height_ = read_layer_param_from_json(pars, "strides_height");
-        offsets_weights_.resize(number_of_input_channels_ * kernel_height_ * kernel_width_,
+        padding_width_ = read_layer_param_from_json(pars, "padding_width");
+        padding_height_ = read_layer_param_from_json(pars, "padding_height");
+        offsets_weights_.resize(number_of_input_channels_, kernel_height_, kernel_width_,
                                 number_of_output_channels_);
         if (FieldExists(pars, "offsets_weights_")) {
-            offsets_weights_ = pars["offsets_weights_"];
+            SetParameters(pars["offsets_weights_"], 0);
         }
     }
 };

@@ -101,14 +101,29 @@ public:
     }
 
     VectorType
-    LogValDiff(const VectorXd &v, const vector<vector<int> > &tochange,
+    LogValDiff(const VectorXd &orig_vector, const vector<vector<int> > &tochange,
                const vector<vector<double>> &newconf) override {
-        return VectorType{};
+        T orig_log_value = LogVal(orig_vector);
+        const std::size_t nconn = tochange.size();
+        VectorType logvaldiffs = VectorType::Zero(nconn);
+        for (std::size_t k = 0; k < nconn; k++) {
+            VectorXd new_vector(orig_vector);
+            for (std::size_t s = 0; s < tochange[k].size(); s++) {
+                new_vector[tochange[k][s]] = newconf[k][s];
+            }
+            logvaldiffs(k) = LogVal(new_vector) - orig_log_value;
+        }
+        return logvaldiffs;
     }
 
-    T LogValDiff(const VectorXd &v, const vector<int> &toflip,
+    T LogValDiff(const VectorXd &v, const vector<int> &tochange,
                  const vector<double> &newconf, const LookupType &lt) override {
-        return T{};
+        T orig_log_value = LogVal(v);
+        VectorXd new_vector(v);
+        for (std::size_t s = 0; s < tochange.size(); s++) {
+            new_vector[tochange[s]] = newconf[s];
+        }
+        return LogVal(new_vector) - orig_log_value;
     }
 
     VectorType DerLog(const VectorXd &v) override {

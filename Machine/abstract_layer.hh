@@ -18,6 +18,7 @@
 #include <vector>
 #include <complex>
 #include <Eigen/Dense>
+#include <unsupported/Eigen/CXX11/Tensor>
 #include <random>
 #include <fstream>
 #include <Lookup/lookup.hh>
@@ -36,6 +37,7 @@ public:
 
   using VectorType = Eigen::Matrix<T, Eigen::Dynamic, 1>;
   using MatrixType = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
+  using TensorType = Eigen::Tensor<T, 3>;
   using StateType = T;
   using LookupType = Lookup<T>;
 
@@ -48,7 +50,7 @@ public:
   /**
   Member function returning the current set of parameters in the machine.
   */
-  virtual void GetParameters(VectorType & out_params, int start_idx)=0;
+  virtual void GetParameters(VectorType & out_params, int start_idx) const =0;
 
   /**
   Member function setting the current set of parameters in the machine.
@@ -81,21 +83,21 @@ public:
   Member function computing the logarithm of the wave function for a given visible vector.
   Given the current set of parameters, this function should comput the value
   of the logarithm of the wave function from scratch.
-  @param v a constant reference to a visible configuration.
-  @return Logarithm of the wave function.
+  @param t a constant reference to previous layer output.
+  @return Logarithm of the layer output.
   */
-  virtual T LogVal(const Eigen::VectorXd & v)=0;
+  virtual TensorType LogVal(const TensorType & t)=0;
 
   /**
   Member function computing the logarithm of the wave function for a given visible vector.
   Given the current set of parameters, this function should comput the value
   of the logarithm of the wave function using the information provided in the look-up table,
   to speed up the computation.
-  @param v a constant reference to a visible configuration.
+  @param t a constant reference to previous layer output.
   @param lt a constant eference to the look-up table.
-  @return Logarithm of the wave function.
+  @return Logarithm of the layer output.
   */
-  virtual T LogVal(const Eigen::VectorXd & v,LookupType & lt)=0;
+  virtual TensorType LogVal(const TensorType & t,LookupType & lt)=0;
 
   /**
   Member function initializing the look-up tables.
@@ -127,34 +129,6 @@ public:
   */
   virtual void UpdateLookup(const Eigen::VectorXd & v,const std::vector<int>  & tochange,
     const std::vector<double> & newconf,LookupType & lt)=0;
-
-  /**
-  Member function computing the difference between the logarithm of the wave-function
-  computed at different values of the visible units (v, and a set of v').
-  @param v a constant reference to the current visible configuration.
-  @param tochange a constant reference to a vector containing the indeces of the units to be modified.
-  @param newconf a constant reference to a vector containing the new values of the visible units:
-  here for each v', newconf(i)=v'(tochange(i)), where v' is the new visible state.
-  @return A vector containing, for each v', log(Psi(v')) - log(Psi(v))
-  */
-  virtual VectorType LogValDiff(const Eigen::VectorXd & v,
-    const std::vector<std::vector<int> >  & tochange,
-    const std::vector<std::vector<double>> & newconf)=0;
-
-  /**
-  Member function computing the difference between the logarithm of the wave-function
-  computed at different values of the visible units (v, and a single v').
-  This version uses the look-up tables to speed-up the calculation.
-  @param v a constant reference to the current visible configuration.
-  @param tochange a constant reference to a vector containing the indeces of the units to be modified.
-  @param newconf a constant reference to a vector containing the new values of the visible units:
-  here newconf(i)=v'(tochange(i)), where v' is the new visible state.
-  @param lt a constant eference to the look-up table.
-  @return The value of log(Psi(v')) - log(Psi(v))
-  */
-  virtual T LogValDiff(const Eigen::VectorXd & v,const std::vector<int>  & toflip,
-      const std::vector<double> & newconf,const LookupType & lt)=0;
-
 
 
   /**

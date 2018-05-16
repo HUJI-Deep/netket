@@ -151,7 +151,7 @@ public:
   @param lt a constant eference to the look-up table.
   @return The value of log(Psi(v')) - log(Psi(v))
   */
-  virtual T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
+  virtual T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &tochange,
                        const std::vector<double> &newconf,
                        const LookupType &lt) = 0;
 
