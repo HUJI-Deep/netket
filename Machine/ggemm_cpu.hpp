@@ -1,10 +1,71 @@
+/**
+ * A helper function to calculate the output dimension's size give the original
+ * size of the image, padding, patch size and stride.
+ * @param  image_size The size of the dimension in the original image
+ * @param  pad_size   The amount of padding to apply to the original image
+ * @param  patch_size The size of the dimension in the patch taken from the image
+ * @param  stride     The patch's stride over the original image
+ * @param  round_down Whether to round down or up when calculating the size
+ * @return            The output size of the patch image
+ * @remarks round_down can be used to control pooling/conv style im2col method.
+ */
+inline int dimension_out_size(const int image_size, const int pad_size, const int patch_size,
+                              const int stride, const bool round_down) {
+    if (round_down) {
+        return (image_size + 2 * pad_size - patch_size) / stride + 1;
+    } else {
+        return static_cast<int>(std::ceil(static_cast<float>(image_size + 2 * pad_size - patch_size) / stride)) + 1;
+    }
+}
+
 template <typename T>
 void channels_first_im2col_cpu(const T* data_im,
                                const int channels, const int height, const int width,
                                const int patch_h, const int patch_w,
                                const int pad_h, const int pad_w,
                                const int stride_h, const int stride_w,
-                               T* data_col, const bool round_down, T out_of_bounds_value);
+                               T* data_col, const bool round_down, T out_of_bounds_value) {
+
+    const int height_col = dimension_out_size(height, pad_h, patch_h, stride_h, round_down);
+    const int width_col = dimension_out_size(width, pad_w, patch_w, stride_w, round_down);
+    const int patch_c = channels;
+    const int patch_col = patch_c * patch_h * patch_w;
+    for (int p = 0; p < patch_col; ++p) {
+        const int c_offset = p % patch_c;
+        const int w_offset = (p / patch_c) % patch_w;
+        const int h_offset = (p / patch_c) / patch_w;
+        for (int h = 0; h < height_col; ++h) {
+            for (int w = 0; w < width_col; ++w) {
+                const int h_pad = h * stride_h - pad_h + h_offset;
+                const int w_pad = w * stride_w - pad_w + w_offset;
+                const int c_pad = c_offset;
+                if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
+                    && c_pad >= 0 && c_pad < channels) {
+                    data_col[(p * height_col + h) * width_col + w] =
+                            data_im[(c_pad * height + h_pad) * width + w_pad];
+                } else {
+                    data_col[(p * height_col + h) * width_col + w] = out_of_bounds_value;
+                }
+            }
+        }
+    }
+}
+
+template <typename Dtype>
+inline Dtype ceiled_div(const Dtype a, const Dtype b) {
+    return (a / b) + ((a % b) > 0);
+}
+
+enum {
+    BLOCK_WIDTH = 16,
+    BLOCK_HEIGHT = 16
+};
+
+inline int ggemm_padded_output_size(const int M, const int N) {
+    int newN = ceiled_div<int>(N, BLOCK_WIDTH) * BLOCK_WIDTH;
+    int newM = ceiled_div<int>(M, BLOCK_HEIGHT) * BLOCK_HEIGHT;
+    return newN * newM - M * N;
+}
 
 template<typename Atype, typename Btype, typename Ctype, typename Ptype,
         Ctype (*COMB_F1)(Atype, Btype, Ptype), Ctype (*ACC_F1)(Ctype, Ctype),
@@ -90,6 +151,11 @@ Dtype ggemm_add(Dtype a, Dtype b) {
 template<typename Dtype>
 Dtype ggemm_max(Dtype a, Dtype b) {
     return std::max(a, b);
+}
+
+template<>
+std::complex<double > ggemm_max(std::complex<double > a, std::complex<double > b) {
+    return std::complex<double>(std::max(a.real(), b.real()), std::max(a.imag(), b.imag()));
 }
 
 template<typename Dtype>

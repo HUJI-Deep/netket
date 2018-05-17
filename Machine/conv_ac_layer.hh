@@ -29,26 +29,6 @@ namespace netket {
 using namespace std;
 using namespace Eigen;
 
-/**
- * A helper function to calculate the output dimension's size give the original
- * size of the image, padding, patch size and stride.
- * @param  image_size The size of the dimension in the original image
- * @param  pad_size   The amount of padding to apply to the original image
- * @param  patch_size The size of the dimension in the patch taken from the image
- * @param  stride     The patch's stride over the original image
- * @param  round_down Whether to round down or up when calculating the size
- * @return            The output size of the patch image
- * @remarks round_down can be used to control pooling/conv style im2col method.
- */
-inline int dimension_out_size(const int image_size, const int pad_size, const int patch_size,
-                              const int stride, const bool round_down) {
-    if (round_down) {
-        return (image_size + 2 * pad_size - patch_size) / stride + 1;
-    } else {
-        return static_cast<int>(std::ceil(static_cast<float>(image_size + 2 * pad_size - patch_size) / stride)) + 1;
-    }
-}
-
 
 template<typename T>
 class ConvACLayer : public AbstractLayer<T> {
@@ -147,26 +127,31 @@ public:
     }
 
     TensorType LogVal(const TensorType &input_tensor) {
-        long input_height = input_tensor.dimension(1);
-        long input_width = input_tensor.dimension(2);
-        int output_height = dimension_out_size(input_height, padding_height_, kernel_height_, strides_height_, true);
-        int output_width = dimension_out_size(input_width, padding_width_, kernel_width_, strides_width_, true);
-        int num_regions_ = kernel_height_ * kernel_width_;
-        TensorType output_tensor(number_of_output_channels_);
+        const long input_height = input_tensor.dimension(1);
+        const long input_width = input_tensor.dimension(2);
+        const int output_height = dimension_out_size(input_height, padding_height_, kernel_height_, strides_height_, true);
+        const int output_width = dimension_out_size(input_width, padding_width_, kernel_width_, strides_width_, true);
+        const int num_regions_ = kernel_height_ * kernel_width_;
+        const int col_buffer_padding = ggemm_padded_output_size(number_of_input_channels_, output_height * output_width);
+        const int offsets_padding_size = ggemm_padded_output_size(number_of_output_channels_, number_of_input_channels_);
+        Tensor<T, 1> col_buffer(num_regions_ * number_of_input_channels_ * output_height * output_width + col_buffer_padding);
+        Tensor<T, 1> padded_offsets(Npar() + offsets_padding_size);
+        TensorType output_tensor(output_height, output_width,number_of_output_channels_);
         channels_first_im2col_cpu<T>(
-                bottom_data,
+                input_tensor.data(),
                 number_of_input_channels_, input_height, input_width,
                 kernel_height_, kernel_width_,
                 padding_height_, padding_width_,
                 strides_height_, strides_width_,
-                col_buff, true, T(0));
+                col_buffer.data(), true, T(0));
         ggemm_2ops_cpu<T, T, T, uint8_t,
                 ggemm_add<T, uint8_t>, ggemm_max<T>,
                 softmax<T>, ggemm_add<T>, true,
                 softmax_activation<T>, true,
                 true, true, false>
-                            (number_of_output_channels_, output_height * output_width, number_of_input_channels_, offsets_buff, col_buff, output_tensor.data() ,
-                                    -INFINITY, 0, 0, num_regions_);
+                            (number_of_output_channels_, output_height * output_width,
+                             number_of_input_channels_, padded_offsets.data(), col_buffer.data(),
+                             output_tensor.data() , -INFINITY, 0, 0, num_regions_);
         return TensorType{};
     }
 
