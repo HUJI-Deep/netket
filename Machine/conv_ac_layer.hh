@@ -19,6 +19,7 @@
 #include <Json/json.hh>
 
 #include "abstract_layer.hh"
+#include "ggemm_cpu.hpp"
 
 #ifndef NETKET_CONV_AC_LAYER_HH
 #define NETKET_CONV_AC_LAYER_HH
@@ -145,8 +146,27 @@ public:
         return VectorType{};
     }
 
-    TensorType LogVal(const TensorType &layer_input) {
-
+    TensorType LogVal(const TensorType &input_tensor) {
+        long input_height = input_tensor.dimension(1);
+        long input_width = input_tensor.dimension(2);
+        int output_height = dimension_out_size(input_height, padding_height_, kernel_height_, strides_height_, true);
+        int output_width = dimension_out_size(input_width, padding_width_, kernel_width_, strides_width_, true);
+        int num_regions_ = kernel_height_ * kernel_width_;
+        TensorType output_tensor(number_of_output_channels_);
+        channels_first_im2col_cpu<T>(
+                bottom_data,
+                number_of_input_channels_, input_height, input_width,
+                kernel_height_, kernel_width_,
+                padding_height_, padding_width_,
+                strides_height_, strides_width_,
+                col_buff, true, T(0));
+        ggemm_2ops_cpu<T, T, T, uint8_t,
+                ggemm_add<T, uint8_t>, ggemm_max<T>,
+                softmax<T>, ggemm_add<T>, true,
+                softmax_activation<T>, true,
+                true, true, false>
+                            (number_of_output_channels_, output_height * output_width, number_of_input_channels_, offsets_buff, col_buff, output_tensor.data() ,
+                                    -INFINITY, 0, 0, num_regions_);
         return TensorType{};
     }
 
