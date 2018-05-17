@@ -167,3 +167,11 @@ template<typename Dtype>
 Dtype softmax_activation(Dtype max, Dtype input, uint8_t nothing) {
     return std::log(input) + max;
 }
+
+template <typename T, typename D>
+void copy_with_eigen(T* dest, const T* source, size_t sz, const D& eigen_device)
+{
+    typename Eigen::Tensor<T,1> src(source, sz);
+    typename Eigen::Tensor<T,1> dst(dest, sz);
+    dst.device(eigen_device) = src;
+}

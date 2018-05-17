@@ -49,6 +49,7 @@ class ConvACLayer : public AbstractLayer<T> {
     int my_mpi_node_{};
 
     Eigen::Tensor<T, 4> offsets_weights_{};
+    Eigen::Tensor<T, 1> padded_offsets_weights_{};
 
 
 public:
@@ -133,9 +134,7 @@ public:
         const int output_width = dimension_out_size(input_width, padding_width_, kernel_width_, strides_width_, true);
         const int num_regions_ = kernel_height_ * kernel_width_;
         const int col_buffer_padding = ggemm_padded_output_size(number_of_input_channels_, output_height * output_width);
-        const int offsets_padding_size = ggemm_padded_output_size(number_of_output_channels_, number_of_input_channels_);
         Tensor<T, 1> col_buffer(num_regions_ * number_of_input_channels_ * output_height * output_width + col_buffer_padding);
-        Tensor<T, 1> padded_offsets(Npar() + offsets_padding_size);
         TensorType output_tensor(output_height, output_width,number_of_output_channels_);
         channels_first_im2col_cpu<T>(
                 input_tensor.data(),
@@ -150,7 +149,7 @@ public:
                 softmax_activation<T>, true,
                 true, true, false>
                             (number_of_output_channels_, output_height * output_width,
-                             number_of_input_channels_, padded_offsets.data(), col_buffer.data(),
+                             number_of_input_channels_, padded_offsets_weights_.data(), col_buffer.data(),
                              output_tensor.data() , -INFINITY, 0, 0, num_regions_);
         return TensorType{};
     }
@@ -207,6 +206,10 @@ public:
         strides_height_ = read_layer_param_from_json(pars, "strides_height");
         padding_width_ = read_layer_param_from_json(pars, "padding_width");
         padding_height_ = read_layer_param_from_json(pars, "padding_height");
+
+        const int offsets_padding_size = ggemm_padded_output_size(number_of_output_channels_, number_of_input_channels_);
+        padded_offsets_weights_ = Eigen::Tensor<T, 1>(Npar() + offsets_padding_size) ;
+        offsets_weights_ = TensorMap<Tensor<T,4>> (padded_offsets_weights_.data(), Npar());
         offsets_weights_.resize(number_of_input_channels_, kernel_height_, kernel_width_,
                                 number_of_output_channels_);
         if (FieldExists(pars, "offsets_weights_")) {
