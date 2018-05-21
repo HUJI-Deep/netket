@@ -22,7 +22,7 @@
 #include "rbm_multival.hpp"
 #include "rbm_spin.hpp"
 #include "rbm_spin_symm.hpp"
-#include "conv_ac.hh"
+#include "conv_ac.hpp"
 
 namespace netket {
 

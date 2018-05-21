@@ -43,7 +43,7 @@ TEST_CASE("machines set/get correctly parameters", "[machine]") {
       int seed = 12342;
       double sigma = 1;
       netket::Machine<MType>::VectorType params(machine.Npar());
-      netket::RbmSpin<MType>::RandomGaussian(params, seed, sigma);
+      netket::Random<MType>::RandomGaussian(params, seed, sigma);
 
       machine.SetParameters(params);
 

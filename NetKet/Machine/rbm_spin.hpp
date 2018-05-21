@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "Lookup/lookup.hpp"
-#include "random.hh"
+#include "random.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <random>

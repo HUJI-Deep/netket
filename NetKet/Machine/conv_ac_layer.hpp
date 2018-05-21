@@ -18,7 +18,7 @@
 #include <vector>
 #include <Json/json.hpp>
 
-#include "abstract_layer.hh"
+#include "abstract_layer.hpp"
 #include "ggemm_cpu.hpp"
 
 #ifndef NETKET_CONV_AC_LAYER_HH

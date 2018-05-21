@@ -2,7 +2,7 @@
 #define NETKET_CONV_AC_HH
 
 #include "abstract_machine.hpp"
-#include "conv_ac_layer.hh"
+#include "conv_ac_layer.hpp"
 
 namespace netket {
 

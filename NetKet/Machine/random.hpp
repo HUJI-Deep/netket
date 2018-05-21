@@ -4,6 +4,7 @@
 #include <complex>
 #include <random>
 
+namespace netket{
 
 template <typename T> class Random{
 public:
@@ -27,11 +28,13 @@ public:
     }
 
     inline static void RandomGaussian(Eigen::Matrix<T, Eigen::Dynamic, 1> &par,
-                               int seed, double sigma) {
+                                      int seed, double sigma) {
         std::default_random_engine generator(seed);
         Random<T>::RandomGaussian(par, generator, sigma);
     }
 
 };
+
+}
 
 #endif //NETKET_RANDOM_HH
