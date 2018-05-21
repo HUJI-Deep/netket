@@ -13,14 +13,14 @@
 // limitations under the License.
 
 #include "catch.hpp"
-#include "netket.hh"
+#include "netket.hpp"
 #include <cfloat>
 #include <fstream>
 #include <iostream>
 #include <set>
 #include <vector>
 
-#include "hilbert_input_tests.hh"
+#include "hilbert_input_tests.hpp"
 
 TEST_CASE("hilbert has consistent sizes and definitions", "[hilbert]") {
 
@@ -34,7 +34,8 @@ TEST_CASE("hilbert has consistent sizes and definitions", "[hilbert]") {
     }
     std::string name = input_tests[i][parname].dump();
 
-    SECTION("Hilbert test on " + name) {
+    SECTION("Hilbert test (" + std::to_string(i) + ") (" + std::to_string(i) +
+            ") on " + name) {
 
       netket::Hilbert hilbert;
 
@@ -74,7 +75,7 @@ TEST_CASE("hilbert generates consistent random states", "[hilbert]") {
     }
     std::string name = input_tests[i][parname].dump();
 
-    SECTION("Hilbert test on " + name) {
+    SECTION("Hilbert test (" + std::to_string(i) + ") on " + name) {
 
       netket::Hilbert hilbert;
 
@@ -87,6 +88,7 @@ TEST_CASE("hilbert generates consistent random states", "[hilbert]") {
       }
 
       REQUIRE(hilbert.Size() > 0);
+      REQUIRE(hilbert.LocalSize() > 0);
 
       if (hilbert.IsDiscrete()) {
 
@@ -103,6 +105,49 @@ TEST_CASE("hilbert generates consistent random states", "[hilbert]") {
           for (int k = 0; k < rstate.size(); k++) {
             REQUIRE(lset.count(rstate(k)) > 0);
           }
+        }
+      }
+    }
+  }
+}
+
+TEST_CASE("hilbert index generates consistent mappings", "[hilbert]") {
+  auto input_tests = GetHilbertInputs();
+  std::size_t ntests = input_tests.size();
+
+  for (std::size_t i = 0; i < ntests; i++) {
+    std::string parname = "Hilbert";
+    if (!netket::FieldExists(input_tests[i], "Hilbert")) {
+      parname = "Hamiltonian";
+    }
+    std::string name = input_tests[i][parname].dump();
+
+    SECTION("Hilbert test (" + std::to_string(i) + ") on " + name) {
+
+      netket::Hilbert hilbert;
+
+      if (netket::FieldExists(input_tests[i], "Hilbert")) {
+        hilbert = netket::Hilbert(input_tests[i]);
+      } else if (netket::FieldExists(input_tests[i], "Hamiltonian")) {
+        netket::Graph graph(input_tests[i]);
+        netket::Hamiltonian hamiltonian(graph, input_tests[i]);
+        hilbert = netket::Hilbert(hamiltonian.GetHilbert());
+      }
+
+      REQUIRE(hilbert.Size() > 0);
+      REQUIRE(hilbert.LocalSize() > 0);
+
+      // Only do the test for small hilbert spaces
+      if (hilbert.Size() * std::log(hilbert.LocalSize()) <
+          std::log(netket::HilbertIndex::MaxStates)) {
+
+        netket::HilbertIndex hilb_index(hilbert);
+
+        for (std::size_t k = 0; k < hilb_index.NStates(); k++) {
+
+          const auto state = hilb_index.NumberToState(k);
+
+          REQUIRE(hilb_index.StateToNumber(state) == k);
         }
       }
     }
