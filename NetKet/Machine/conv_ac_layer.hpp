@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <iostream>
 #include <Eigen/Dense>
-#include <random>
+#include <iostream>
+#include <map>
 #include <vector>
-#include <Json/json.hpp>
-
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
 #include "abstract_layer.hpp"
 #include "ggemm_cpu.hpp"
 
@@ -118,7 +118,7 @@ public:
 
     void InitRandomPars(std::default_random_engine& generator,double sigma) {
         VectorType par(Npar());
-        Random<T>::RandomGaussian(par, generator, sigma);
+        netket::RandomGaussian(par, generator, sigma);
         SetParameters(par, 0);
     }
 
