@@ -15,13 +15,13 @@
 #ifndef NETKET_OBS_MANAGER_HPP
 #define NETKET_OBS_MANAGER_HPP
 
+#include <mpi.h>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <cassert>
 #include <iostream>
 #include <map>
-#include <mpi.h>
-#include <random>
+#include "Utils/random_utils.hpp"
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -29,11 +29,10 @@
 namespace netket {
 
 class ObsManager {
-
   std::map<std::string, Binning<double>> scalar_real_obs_;
   std::map<std::string, Binning<Eigen::VectorXd>> vector_real_obs_;
 
-public:
+ public:
   ObsManager() {}
   inline void Push(std::string name, const double &data) {
     scalar_real_obs_[name] << data;
@@ -83,5 +82,5 @@ void to_json(json &j, const ObsManager &om) {
   }
 }
 
-} // namespace netket
+}  // namespace netket
 #endif

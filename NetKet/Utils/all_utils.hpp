@@ -12,19 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NETKET_STATS_HPP
-#define NETKET_STATS_HPP
+#ifndef NETKET_ALLUTILS_HPP
+#define NETKET_ALLUTILS_HPP
 
-namespace netket {
-template <class T>
-class OnlineStat;
-template <class T>
-class Binning;
-class ObsManager;
-}  // namespace netket
-
-#include "binning.hpp"
-#include "obs_manager.hpp"
-#include "onlinestat.hpp"
+#include "json_utils.hpp"
+#include "parallel_utils.hpp"
+#include "random_utils.hpp"
 
 #endif

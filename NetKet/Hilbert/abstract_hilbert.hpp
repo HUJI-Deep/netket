@@ -16,7 +16,7 @@
 
 #include <Eigen/Dense>
 #include <complex>
-#include <random>
+#include "Utils/random_utils.hpp"
 #include <vector>
 
 namespace netket {
@@ -27,8 +27,7 @@ namespace netket {
 */
 
 class AbstractHilbert {
-
-public:
+ public:
   /**
   Member function returning true if the hilbert space has discrete quantum
   numbers.
@@ -80,6 +79,6 @@ public:
   virtual ~AbstractHilbert() {}
 };
 
-} // namespace netket
+}  // namespace netket
 
 #endif

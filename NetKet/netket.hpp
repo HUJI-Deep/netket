@@ -15,12 +15,6 @@
 #ifndef NETKET_HEADER_HPP
 #define NETKET_HEADER_HPP
 
-#include <random>
-
-namespace netket {
-using default_random_engine = std::mt19937;
-}
-
 #include "Graph/graph.hpp"
 #include "Hamiltonian/hamiltonian.hpp"
 #include "Headers/welcome.hpp"
@@ -29,9 +23,8 @@ using default_random_engine = std::mt19937;
 #include "Lookup/lookup.hpp"
 #include "Machine/machine.hpp"
 #include "Observable/observable.hpp"
-#include "Parallel/parallel.hpp"
 #include "Sampler/sampler.hpp"
 #include "Stats/stats.hpp"
-#include "Json/json_helper.hpp"
+#include "Utils/all_utils.hpp"
 
 #endif

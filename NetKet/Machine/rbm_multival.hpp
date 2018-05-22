@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "Lookup/lookup.hpp"
-#include "abstract_machine.hpp"
-#include "rbm_spin.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <map>
-#include <random>
 #include <vector>
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
+#include "abstract_machine.hpp"
+#include "rbm_spin.hpp"
 
 #ifndef NETKET_RBM_MULTIVAL_HPP
 #define NETKET_RBM_MULTIVAL_HPP
@@ -28,8 +28,8 @@ namespace netket {
 
 // Restricted Boltzman Machine wave function
 // for generic (finite) local hilbert space
-template <typename T> class RbmMultival : public AbstractMachine<T> {
-
+template <typename T>
+class RbmMultival : public AbstractMachine<T> {
   using VectorType = typename AbstractMachine<T>::VectorType;
   using MatrixType = typename AbstractMachine<T>::MatrixType;
 
@@ -73,19 +73,17 @@ template <typename T> class RbmMultival : public AbstractMachine<T> {
 
   std::map<double, int> confindex_;
 
-public:
+ public:
   using StateType = typename AbstractMachine<T>::StateType;
   using LookupType = typename AbstractMachine<T>::LookupType;
 
   // Json constructor
   explicit RbmMultival(const Hilbert &hilbert, const json &pars)
       : nv_(hilbert.Size()), hilbert_(hilbert), ls_(hilbert.LocalSize()) {
-
     from_json(pars);
   }
 
   void Init() {
-
     W_.resize(nv_ * ls_, nh_);
     a_.resize(nv_ * ls_);
     b_.resize(nh_);
@@ -149,10 +147,9 @@ public:
   int Npar() const override { return npar_; }
 
   void InitRandomPars(int seed, double sigma) override {
-
     VectorType par(npar_);
 
-    Random<T>::RandomGaussian(par, seed, sigma);
+    netket::RandomGaussian(par, seed, sigma);
 
     SetParameters(par);
   }
@@ -170,9 +167,7 @@ public:
   void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
                     const std::vector<double> &newconf,
                     LookupType &lt) override {
-
     if (tochange.size() != 0) {
-
       for (std::size_t s = 0; s < tochange.size(); s++) {
         const int sf = tochange[s];
         const int oldtilde = confindex_[v[sf]];
@@ -217,7 +212,6 @@ public:
   }
 
   VectorType GetParameters() override {
-
     VectorType pars(npar_);
 
     int k = 0;
@@ -288,11 +282,9 @@ public:
 
   // Difference between logarithms of values, when one or more visible variables
   // are being changed
-  VectorType
-  LogValDiff(const Eigen::VectorXd &v,
-             const std::vector<std::vector<int>> &tochange,
-             const std::vector<std::vector<double>> &newconf) override {
-
+  VectorType LogValDiff(
+      const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
+      const std::vector<std::vector<double>> &newconf) override {
     const std::size_t nconn = tochange.size();
     VectorType logvaldiffs = VectorType::Zero(nconn);
 
@@ -302,9 +294,7 @@ public:
     T logtsum = lnthetas_.sum();
 
     for (std::size_t k = 0; k < nconn; k++) {
-
       if (tochange[k].size() != 0) {
-
         thetasnew_ = thetas_;
 
         for (std::size_t s = 0; s < tochange[k].size(); s++) {
@@ -332,11 +322,9 @@ public:
   T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &tochange,
                const std::vector<double> &newconf,
                const LookupType &lt) override {
-
     T logvaldiff = 0.;
 
     if (tochange.size() != 0) {
-
       RbmSpin<T>::lncosh(lt.V(0), lnthetas_);
 
       thetasnew_ = lt.V(0);
@@ -385,7 +373,6 @@ public:
   }
 
   void from_json(const json &pars) override {
-
     if (pars.at("Machine").at("Name") != "RbmMultival") {
       if (mynode_ == 0) {
         std::cerr << "# Error while constructing RbmMultival from Json input"
@@ -445,6 +432,6 @@ public:
   }
 };
 
-} // namespace netket
+}  // namespace netket
 
 #endif
