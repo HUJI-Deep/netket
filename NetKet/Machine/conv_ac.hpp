@@ -82,11 +82,17 @@ public:
     }
 
     T LogVal(const VectorXd &v) override {
-        return T{};
+        Eigen::Matrix<T, Dynamic, 1> input(v);
+        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1, visible_height_, visible_width_);
+        for(auto const& layer: layers_) {
+            input_tensor = layer->LogVal(input_tensor);
+        }
+        auto sum_result = (Eigen::Tensor<T, 1>)input_tensor.sum();
+        return sum_result(0);
     }
 
     T LogVal(const VectorXd &v, LookupType &lt) override {
-        return T{};
+        return LogVal(v);
     }
 
     void InitLookup(const VectorXd &v, LookupType &lt) override {
