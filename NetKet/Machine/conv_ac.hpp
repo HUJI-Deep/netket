@@ -46,7 +46,7 @@ public:
 
     int Npar() const override {
         int num_of_params = 0;
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             num_of_params += layer->Npar();
         }
         return num_of_params;
@@ -55,7 +55,7 @@ public:
     VectorType GetParameters() override {
         VectorType parameters(Npar());
         int start_idx = 0;
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             layer->GetParameters(parameters, start_idx);
             start_idx += layer->Npar();
         }
@@ -64,7 +64,7 @@ public:
 
     void SetParameters(const VectorType &parameters) override {
         int start_idx = 0;
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             layer->SetParameters(parameters, start_idx);
             start_idx += layer->Npar();
         }
@@ -72,7 +72,7 @@ public:
 
     void InitRandomPars(int seed, double sigma) override {
         std::default_random_engine generator(seed);
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             layer->InitRandomPars(generator, sigma);
         }
     }
@@ -83,11 +83,13 @@ public:
 
     T LogVal(const VectorXd &v) override {
         Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1, visible_height_, visible_width_);
-        for(auto const& layer: layers_) {
+        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1,
+                                                        visible_height_,
+                                                        visible_width_);
+        for (auto const &layer: layers_) {
             input_tensor = layer->LogVal(input_tensor);
         }
-        auto sum_result = (Eigen::Tensor<T, 1>)input_tensor.sum();
+        auto sum_result = (Eigen::Tensor<T, 1>) input_tensor.sum();
         return sum_result(0);
     }
 
@@ -96,20 +98,21 @@ public:
     }
 
     void InitLookup(const VectorXd &v, LookupType &lt) override {
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             layer->InitLookup(v, lt);
         }
     }
 
     void UpdateLookup(const VectorXd &v, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             layer->UpdateLookup(v, tochange, newconf, lt);
         }
     }
 
     VectorType
-    LogValDiff(const VectorXd &orig_vector, const vector<vector<int> > &tochange,
+    LogValDiff(const VectorXd &orig_vector,
+               const vector<vector<int> > &tochange,
                const vector<vector<double>> &newconf) override {
         T orig_log_value = LogVal(orig_vector);
         const std::size_t nconn = tochange.size();
@@ -142,7 +145,7 @@ public:
         j["Machine"]["Name"] = "ConvAC";
         j["Machine"]["Nvisible"] = number_of_visible_units_;
         j["layers"] = json::array();
-        for(auto const& layer: layers_) {
+        for (auto const &layer: layers_) {
             json layer_node;
             layer->to_json(layer_node);
             j["layers"].push_back(layer_node);
@@ -160,20 +163,20 @@ public:
         }
         if (FieldExists(pars["Machine"], "visible_width")) {
             visible_width_ = pars["Machine"]["visible_width"];
-        }
-        else{
+        } else {
             visible_width_ = 1;
         }
         if (FieldExists(pars["Machine"], "visible_height")) {
             visible_height_ = pars["Machine"]["visible_height"];
-        }
-        else{
+        } else {
             visible_height_ = hilbert_.Size();
         }
         number_of_visible_units_ = visible_width_ * visible_height_;
         if (number_of_visible_units_ != hilbert_.Size()) {
             if (my_mpi_node_ == 0) {
-                cerr << "# Number of visible units is incompatible with given Hilbert space" << endl;
+                cerr
+                        << "# Number of visible units is incompatible with given Hilbert space"
+                        << endl;
             }
             std::abort();
         }
@@ -184,8 +187,9 @@ public:
             std::abort();
         }
         int input_dimension = number_of_visible_units_;
-        for(auto const& layer: pars["Machine"]["Layers"]) {
-            layers_.push_back(std::unique_ptr<ConvACLayer<T>>(new ConvACLayer<T>(layer, input_dimension)));
+        for (auto const &layer: pars["Machine"]["Layers"]) {
+            layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
+                    new ConvACLayer<T>(layer, input_dimension)));
             input_dimension = layers_.back()->Noutput();
         }
     }

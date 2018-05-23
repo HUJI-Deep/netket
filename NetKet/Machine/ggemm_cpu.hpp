@@ -9,25 +9,32 @@
  * @return            The output size of the patch image
  * @remarks round_down can be used to control pooling/conv style im2col method.
  */
-inline int dimension_out_size(const int image_size, const int pad_size, const int patch_size,
+inline int dimension_out_size(const int image_size, const int pad_size,
+                              const int patch_size,
                               const int stride, const bool round_down) {
     if (round_down) {
         return (image_size + 2 * pad_size - patch_size) / stride + 1;
     } else {
-        return static_cast<int>(std::ceil(static_cast<float>(image_size + 2 * pad_size - patch_size) / stride)) + 1;
+        return static_cast<int>(std::ceil(
+                static_cast<float>(image_size + 2 * pad_size - patch_size) /
+                stride)) + 1;
     }
 }
 
-template <typename T>
-void channels_first_im2col_cpu(const T* data_im,
-                               const int channels, const int height, const int width,
+template<typename T>
+void channels_first_im2col_cpu(const T *data_im,
+                               const int channels, const int height,
+                               const int width,
                                const int patch_h, const int patch_w,
                                const int pad_h, const int pad_w,
                                const int stride_h, const int stride_w,
-                               T* data_col, const bool round_down, T out_of_bounds_value) {
+                               T *data_col, const bool round_down,
+                               T out_of_bounds_value) {
 
-    const int height_col = dimension_out_size(height, pad_h, patch_h, stride_h, round_down);
-    const int width_col = dimension_out_size(width, pad_w, patch_w, stride_w, round_down);
+    const int height_col = dimension_out_size(height, pad_h, patch_h, stride_h,
+                                              round_down);
+    const int width_col = dimension_out_size(width, pad_w, patch_w, stride_w,
+                                             round_down);
     const int patch_c = channels;
     const int patch_col = patch_c * patch_h * patch_w;
     for (int p = 0; p < patch_col; ++p) {
@@ -44,14 +51,15 @@ void channels_first_im2col_cpu(const T* data_im,
                     data_col[(p * height_col + h) * width_col + w] =
                             data_im[(c_pad * height + h_pad) * width + w_pad];
                 } else {
-                    data_col[(p * height_col + h) * width_col + w] = out_of_bounds_value;
+                    data_col[(p * height_col + h) * width_col +
+                             w] = out_of_bounds_value;
                 }
             }
         }
     }
 }
 
-template <typename Dtype>
+template<typename Dtype>
 inline Dtype ceiled_div(const Dtype a, const Dtype b) {
     return (a / b) + ((a % b) > 0);
 }
@@ -69,13 +77,16 @@ inline int ggemm_padded_output_size(const int M, const int N) {
 
 template<typename Atype, typename Btype, typename Ctype, typename Ptype,
         Ctype (*COMB_F1)(Atype, Btype, Ptype), Ctype (*ACC_F1)(Ctype, Ctype),
-        Ctype (*COMB_F2)(Atype, Btype, Ctype, Ptype), Ctype (*ACC_F2)(Ctype, Ctype), bool ADD_TO_C,
+        Ctype (*COMB_F2)(Atype, Btype, Ctype, Ptype), Ctype (*ACC_F2)(Ctype,
+                                                                      Ctype), bool ADD_TO_C,
         Ctype (*APPLY_F)(Ctype, Ctype, Ptype), bool APPLY_ON_C,
         bool BATCH_A_ACTIVE = false, bool BATCH_B_ACTIVE = false, bool BATCH_C_ACTIVE = false>
 void ggemm_2ops_cpu(const int M, const int N, const int K,
                     const Atype *A, const Btype *B, Ctype *C,
-                    const Ctype Cinit1, const Ctype Cinit2, const Ptype extra_params, const int batch_size = 1,
-                    int A_batch_stride = -1, int B_batch_stride = -1, int C_batch_stride = -1) {
+                    const Ctype Cinit1, const Ctype Cinit2,
+                    const Ptype extra_params, const int batch_size = 1,
+                    int A_batch_stride = -1, int B_batch_stride = -1,
+                    int C_batch_stride = -1) {
     if (BATCH_A_ACTIVE) {
         if (A_batch_stride < 0) {
             A_batch_stride = M * K;
@@ -154,8 +165,9 @@ Dtype ggemm_max(Dtype a, Dtype b) {
 }
 
 template<>
-std::complex<double > ggemm_max(std::complex<double > a, std::complex<double > b) {
-    return std::complex<double>(std::max(a.real(), b.real()), std::max(a.imag(), b.imag()));
+std::complex<double> ggemm_max(std::complex<double> a, std::complex<double> b) {
+    return std::complex<double>(std::max(a.real(), b.real()),
+                                std::max(a.imag(), b.imag()));
 }
 
 template<typename Dtype>
@@ -168,10 +180,10 @@ Dtype softmax_activation(Dtype max, Dtype input, uint8_t nothing) {
     return std::log(input) + max;
 }
 
-template <typename T, typename D>
-void copy_with_eigen(T* dest, const T* source, size_t sz, const D& eigen_device)
-{
-    typename Eigen::Tensor<T,1> src(source, sz);
-    typename Eigen::Tensor<T,1> dst(dest, sz);
+template<typename T, typename D>
+void
+copy_with_eigen(T *dest, const T *source, size_t sz, const D &eigen_device) {
+    typename Eigen::Tensor<T, 1> src(source, sz);
+    typename Eigen::Tensor<T, 1> dst(dest, sz);
     dst.device(eigen_device) = src;
 }
