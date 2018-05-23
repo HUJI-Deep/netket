@@ -50,6 +50,8 @@ class ConvACLayer : public AbstractLayer<T> {
 
     Eigen::Tensor<T, 4> offsets_weights_{};
     Eigen::Tensor<T, 1> padded_offsets_weights_{};
+    Eigen::Tensor<T, 4> transposed_offsets_weights_{};
+    Eigen::Tensor<T, 1> padded_transposed_offsets_weights_{};
 
 
 public:
@@ -65,11 +67,11 @@ public:
 
     void GetParameters(VectorType &out_params, int start_idx) const override {
         int k = start_idx;
-        for (int c = 0; c < number_of_input_channels_; c++) {
+        for (int j = 0; j < kernel_height_; j++) {
             for (int i = 0; i < kernel_width_; i++) {
-                for (int j = 0; j < kernel_height_; j++) {
-                    for (int p = 0; p < number_of_output_channels_; p++) {
-                        out_params(k) = offsets_weights_(c, i, j, p);
+                for (int p = 0; p < number_of_output_channels_; p++) {
+                    for (int c = 0; c < number_of_input_channels_; c++) {
+                        out_params(k) = offsets_weights_(j, i, p, c);
                         k++;
                     }
                 }
@@ -79,11 +81,12 @@ public:
 
     void SetParameters(const VectorType &pars, int start_idx) override {
         int k = start_idx;
-        for (int c = 0; c < number_of_input_channels_; c++) {
+        for (int j = 0; j < kernel_height_; j++) {
             for (int i = 0; i < kernel_width_; i++) {
-                for (int j = 0; j < kernel_height_; j++) {
-                    for (int p = 0; p < number_of_output_channels_; p++) {
-                        offsets_weights_(c, i, j, p) = pars[k];
+                for (int p = 0; p < number_of_output_channels_; p++) {
+                    for (int c = 0; c < number_of_input_channels_; c++) {
+                        offsets_weights_(j, i, p, c) = pars[k];
+                        transposed_offsets_weights_(j, i, c, p) = pars[k];
                         k++;
                     }
                 }
@@ -122,9 +125,17 @@ public:
         SetParameters(par, 0);
     }
 
+    TensorType DerLog(const TensorType &input_tensor){
+        return TensorType{};
+    }
 
-    VectorType DerLog(const VectorXd &v) {
-        return VectorType{};
+
+    TensorType InputDerLog(const TensorType &input_tensor, const TensorType &next_layer_gradient){
+        const long input_height = input_tensor.dimension(1);
+        const long input_width = input_tensor.dimension(2);
+        TensorType layer_gradient(number_of_input_channels_, input_height, input_width);
+
+        return layer_gradient;
     }
 
     TensorType LogVal(const TensorType &input_tensor) {
@@ -161,7 +172,7 @@ public:
                  number_of_input_channels_, padded_offsets_weights_.data(),
                  col_buffer.data(),
                  output_tensor.data(), -INFINITY, 0, 0, num_regions_);
-        return TensorType{};
+        return output_tensor;
     }
 
     //Value of the logarithm of the wave-function
@@ -221,11 +232,16 @@ public:
                 number_of_output_channels_, number_of_input_channels_);
         padded_offsets_weights_ = Eigen::Tensor<T, 1>(
                 Npar() + offsets_padding_size);
+        padded_transposed_offsets_weights_ = Eigen::Tensor<T, 1>(
+                Npar() + offsets_padding_size);
         offsets_weights_ = TensorMap < Tensor < T, 4
                 >> (padded_offsets_weights_.data(), Npar());
-        offsets_weights_.resize(number_of_input_channels_, kernel_height_,
-                                kernel_width_,
-                                number_of_output_channels_);
+        transposed_offsets_weights_ = TensorMap < Tensor < T, 4
+                >> (padded_offsets_weights_.data(), Npar());
+        offsets_weights_.resize(kernel_height_, kernel_width_,
+                                number_of_output_channels_, number_of_input_channels_);
+        transposed_offsets_weights_.resize(kernel_height_, kernel_width_,
+                                number_of_input_channels_, number_of_output_channels_);
         if (FieldExists(pars, "offsets_weights_")) {
             SetParameters(pars["offsets_weights_"], 0);
         }
