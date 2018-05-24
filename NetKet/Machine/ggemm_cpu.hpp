@@ -286,6 +286,12 @@ T mex_backward_bottom_finite(T offset, Eigen::Matrix<T, 2, 1> top_data, T data,
     return top_data(1, 0) * std::exp(extra(0, 0) * (data + offset - top_data(0, 0)) + extra(1, 0));
 }
 
+template<typename T>
+T mex_backward_offsets_finite(Eigen::Matrix<T, 2, 1> top_data, T data, T offset,
+                                  Eigen::Matrix<T, 2, 1> extra) {
+    return mex_backward_bottom_finite(offset, top_data, data, extra);
+}
+
 template<typename T, typename P>
 T no_op(T a, P nothing) {
     return a;

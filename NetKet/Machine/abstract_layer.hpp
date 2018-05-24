@@ -136,13 +136,13 @@ public:
   @param v a constant reference to a visible configuration.
   @return Derivatives of the logarithm of the wave function with respect to the set of parameters.
   */
-  virtual TensorType DerLog(const TensorType &input_tensor)=0;
+  virtual VectorType DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient)=0;
 
     /**
 Member function computing the derivative of the logarithm of the wave function for a given visible vector.
 @param v a constant reference to a visible configuration.
 @return Derivatives of the logarithm of the wave function with respect to the layer input using the chain rule.
-*/virtual TensorType InputDerLog(const TensorType &input_tensor, const TensorType &next_layer_gradient)=0;
+*/virtual TensorType InputDerLog(const TensorType &input_tensor, TensorType &next_layer_gradient)=0;
 
   virtual void to_json(json &j)const=0;
   virtual void from_json(const json&j)=0;
