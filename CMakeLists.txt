@@ -60,7 +60,6 @@ set (NETKET_SOURCES ${NETKET_SOURCES} ${NETKET_SOURCE_DIR}/Stats)
 set (NETKET_SOURCES ${NETKET_SOURCES} ${NETKET_SOURCE_DIR}/Utils)
 
 add_executable(netket ${NETKET_SOURCES})
-add_executable(try_eigen try_eigen.cpp)
 
 
 target_link_libraries(netket  ${MPI_LIBRARIES})
