@@ -59,6 +59,49 @@ void channels_first_im2col_cpu(const T *data_im,
     }
 }
 
+template<typename T>
+void simnets_tf_set(const int N, const T alpha, T *Y) {
+    if (alpha == T{0}) {
+        memset(Y, 0, sizeof(T) * N);
+        return;
+    }
+    for (int i = 0; i < N; ++i) {
+        Y[i] = alpha;
+    }
+}
+
+template<typename T>
+void channels_first_col2im_cpu(const T *data_col,
+                               const int channels, const int height, const int width,
+                               const int patch_h, const int patch_w,
+                               const int pad_h, const int pad_w,
+                               const int stride_h, const int stride_w,
+                               T *data_im, const bool round_down) {
+    simnets_tf_set(height * width * channels, T(0), data_im);
+    const int height_col = dimension_out_size(height, pad_h, patch_h, stride_h, round_down);
+    const int width_col = dimension_out_size(width, pad_w, patch_w, stride_w, round_down);
+    const int patch_c = channels;
+    const int patch_col = patch_c * patch_h * patch_w;
+    for (int p = 0; p < patch_col; ++p) {
+        const int c_offset = p % patch_c;
+        const int w_offset = (p / patch_c) % patch_w;
+        const int h_offset = p / patch_c / patch_w;
+        for (int h = 0; h < height_col; ++h) {
+            for (int w = 0; w < width_col; ++w) {
+                const int h_pad = h * stride_h - pad_h + h_offset;
+                const int w_pad = w * stride_w - pad_w + w_offset;
+                const int c_pad = c_offset;
+                if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
+                    && c_pad >= 0 && c_pad < channels) {
+                    data_im[(c_pad * height + h_pad) * width + w_pad] +=
+                            data_col[(p * height_col + h) * width_col + w];
+                }
+            }
+        }
+    }
+}
+
+
 template<typename Dtype>
 inline Dtype ceiled_div(const Dtype a, const Dtype b) {
     return (a / b) + ((a % b) > 0);
@@ -144,6 +187,63 @@ void ggemm_2ops_cpu(const int M, const int N, const int K,
     }
 }
 
+template <bool TRANSPOSE_A, bool TRANSPOSE_B,
+        typename Atype, typename Btype, typename Ctype, typename Ptype,
+        Ctype (*COMB_F)(Atype, Btype, Ctype, Ptype), Ctype (*ACC_F)(Ctype, Ctype), bool ADD_TO_C,
+        Ctype (*APPLY_F)(Ctype, Ptype), bool APPLY_ON_C,
+        bool BATCH_A_ACTIVE = false, bool BATCH_B_ACTIVE = false, bool BATCH_C_ACTIVE = false>
+void ggemm_readc_cpu(const int M, const int N, const int K,
+                     const Atype* A, const Btype* B, const Ctype* Cin, Ctype* Cout,
+                     const Ctype Cinit, const Ptype extra_params, const int batch_size = 1,
+                     int A_batch_stride = -1, int B_batch_stride = -1, int C_batch_stride = -1) {
+    if (BATCH_A_ACTIVE) {
+        if (A_batch_stride < 0) {
+            A_batch_stride = M * K;
+        }
+    }
+    if (BATCH_B_ACTIVE) {
+        if (B_batch_stride < 0) {
+            B_batch_stride = N * K;
+        }
+    }
+    if (BATCH_C_ACTIVE) {
+        if (C_batch_stride < 0) {
+            C_batch_stride = M * N;
+        }
+    }
+    for (int r = 0; r < batch_size; ++r) {
+        for (int i = 0; i < M; ++i) {
+            for (int j = 0; j < N; ++j) {
+                Ctype sum = Cinit;
+                Ctype c = Cin[i * N + j];
+                for (int k = 0; k < K; ++k) {
+                    Atype a = A[TRANSPOSE_A ? k * M + i : i * K + k];
+                    Btype b = B[TRANSPOSE_B ? j * K + k : k * N + j];
+                    sum = ACC_F(sum, COMB_F(a, b, c, extra_params));
+                }
+                if (APPLY_ON_C) {
+                    sum = APPLY_F(sum, extra_params);
+                }
+                if (ADD_TO_C) {
+                    Cout[i * N + j] = ACC_F(Cout[i * N + j], sum);
+                } else {
+                    Cout[i * N + j] = sum;
+                }
+            }
+        }
+        if (BATCH_A_ACTIVE) {
+            A += A_batch_stride;
+        }
+        if (BATCH_B_ACTIVE) {
+            B += B_batch_stride;
+        }
+        if (BATCH_C_ACTIVE) {
+            Cin += C_batch_stride;
+            Cout += C_batch_stride;
+        }
+    }
+}
+
 template<typename Dtype>
 Dtype ggemm_mul(Dtype a, Dtype b) {
     return a * b;
@@ -180,10 +280,22 @@ Dtype softmax_activation(Dtype max, Dtype input, uint8_t nothing) {
     return std::log(input) + max;
 }
 
-template<typename T, typename D>
-void
-copy_with_eigen(T *dest, const T *source, size_t sz, const D &eigen_device) {
-    typename Eigen::Tensor<T, 1> src(source, sz);
-    typename Eigen::Tensor<T, 1> dst(dest, sz);
-    dst.device(eigen_device) = src;
+template<typename T>
+T mex_backward_bottom_finite(T offset, Eigen::Matrix<T, 2, 1> top_data, T data,
+                             Eigen::Matrix<T, 2, 1> extra) {
+    return top_data(1, 0) * std::exp(extra(0, 0) * (data + offset - top_data(0, 0)) + extra(1, 0));
+}
+
+template<typename T, typename P>
+T no_op(T a, P nothing) {
+    return a;
+}
+
+template <typename T> void interlace_cpu(const int N, const T* a, const T* b,
+                                         typename Eigen::Matrix<T, 2, 1>* o) {
+    for (int i = 0; i < N; ++i)
+    {
+        o[i] = Eigen::Matrix<T, 2, 1>();
+        o[i] << a[i], b[i];
+    }
 }

@@ -45,6 +45,7 @@ class ConvACLayer : public AbstractLayer<T> {
     int strides_height_{};
     int padding_width_{};
     int padding_height_{};
+    int num_regions_{};
 
     int my_mpi_node_{};
 
@@ -134,7 +135,58 @@ public:
         const long input_height = input_tensor.dimension(1);
         const long input_width = input_tensor.dimension(2);
         TensorType layer_gradient(number_of_input_channels_, input_height, input_width);
+        const int output_height = dimension_out_size(input_height,
+                                                     padding_height_,
+                                                     kernel_height_,
+                                                     strides_height_, true);
+        const int output_width = dimension_out_size(input_width, padding_width_,
+                                                    kernel_width_,
+                                                    strides_width_, true);
+        const int col_buffer_padding = ggemm_padded_output_size(
+                number_of_input_channels_, output_height * output_width);
+        int buffer_size =
+                num_regions_ * number_of_input_channels_ * output_height *
+                output_width + col_buffer_padding;
+        int top_expanded_size =
+                num_regions_ * number_of_output_channels_* output_height *
+                output_width + col_buffer_padding;
 
+        Tensor<T, 1> col_buffer(buffer_size);
+        Tensor<T, 1> col_grad_buffer(buffer_size);
+        Tensor<T, 1> top_expanded_data(top_expanded_size);
+        Tensor<T, 1> top_expanded_diff(top_expanded_size);
+        Tensor<T, 2> dst(num_regions_, output_height*output_width);
+        col_grad_buffer.setZero();
+        channels_first_im2col_cpu<T>(
+                input_tensor.data(),
+                number_of_input_channels_, input_height, input_width,
+                kernel_height_, kernel_width_,
+                padding_height_, padding_width_,
+                strides_height_, strides_width_,
+                col_buffer.data(), true, T(0));
+        ggemm_2ops_cpu
+                <T, T, T, uint8_t,
+                        ggemm_add<T, uint8_t>, ggemm_max<T>,
+                        softmax<T>, ggemm_add<T>, false,
+                        softmax_activation<T>, true,
+                        true, true, true>
+                (number_of_output_channels_, output_height * output_width,
+                 number_of_input_channels_, padded_offsets_weights_.data(), col_buffer.data(), top_expanded_data.data(),
+                 -INFINITY, 0, 0, num_regions_);
+        int interlaced_top_buff_len = number_of_output_channels_ * output_height * output_width * num_regions_;
+        std::unique_ptr<Matrix<T, 2, 1>[]> interlaced_top_buff(new Matrix<T, 2, 1>[interlaced_top_buff_len]);
+        interlace_cpu<T>(interlaced_top_buff_len, top_expanded_data.data(), top_expanded_diff.data(), interlaced_top_buff.get());
+        ggemm_readc_cpu
+        <false, false, T, Matrix<T, 2, 1>, T, Matrix<T, 2, 1>,
+                mex_backward_bottom_finite<T>, ggemm_add<T>, false,
+                no_op<T, Matrix<T, 2, 1>>, false,
+                true, true, true>
+                            (number_of_input_channels_, output_height * output_width, number_of_output_channels_,
+                             padded_transposed_offsets_weights_.data(), interlaced_top_buff.get(), col_buffer.data(),
+                             col_grad_buffer.data(), 0, Matrix<T, 2, 1>(1, 0), num_regions_);
+        channels_first_col2im_cpu(col_grad_buffer.data(), number_of_input_channels_, input_height, input_width,
+                kernel_height_, kernel_width_, padding_height_, padding_height_, strides_height_, strides_width_,
+                layer_gradient.data() , true);
         return layer_gradient;
     }
 
@@ -148,7 +200,6 @@ public:
         const int output_width = dimension_out_size(input_width, padding_width_,
                                                     kernel_width_,
                                                     strides_width_, true);
-        const int num_regions_ = kernel_height_ * kernel_width_;
         const int col_buffer_padding = ggemm_padded_output_size(
                 number_of_input_channels_, output_height * output_width);
         Tensor<T, 1> col_buffer(
@@ -227,6 +278,7 @@ public:
         strides_height_ = read_layer_param_from_json(pars, "strides_height");
         padding_width_ = read_layer_param_from_json(pars, "padding_width");
         padding_height_ = read_layer_param_from_json(pars, "padding_height");
+        num_regions_ = kernel_height_ * kernel_width_;
 
         const int offsets_padding_size = ggemm_padded_output_size(
                 number_of_output_channels_, number_of_input_channels_);
