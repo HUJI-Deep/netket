@@ -25,6 +25,8 @@ public:
     int visible_height_{};
     int my_mpi_node_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
+    vector<TensorType> values_tensors_;
+    vector<TensorType> gradient_tensors_;
 
     const Hilbert &hilbert_;
 
@@ -86,8 +88,9 @@ public:
         TensorType input_tensor = TensorMap<TensorType>(input.data(), 1,
                                                         visible_height_,
                                                         visible_width_);
-        for (auto const &layer: layers_) {
-            input_tensor = layer->LogVal(input_tensor);
+        layers_[0]->LogVal(input_tensor, values_tensors_[0]);
+        for (int i=1; i < layers_.size(); ++i) {
+            layers_[i]->LogVal(values_tensors_[i-1], values_tensors_[i]);
         }
         auto sum_result = (Eigen::Tensor<T, 1>) input_tensor.sum();
         return sum_result(0);
@@ -196,10 +199,16 @@ public:
             std::abort();
         }
         int input_dimension = number_of_visible_units_;
+        int input_height = visible_height_;
+        int input_width = visible_width_;
         for (auto const &layer: pars["Machine"]["Layers"]) {
             layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
-                    new ConvACLayer<T>(layer, input_dimension)));
-            input_dimension = layers_.back()->Noutput();
+                    new ConvACLayer<T>(layer, input_dimension, input_height, input_width)));
+            auto output_dims = layers_.back()->Noutput();
+            input_dimension = output_dims[0];
+            input_height = output_dims[1];
+            input_width = output_dims[2];
+            values_tensors_.push_back(TensorType(input_dimension, input_height, input_width));
         }
     }
 };
