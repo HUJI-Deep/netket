@@ -142,6 +142,16 @@ template<typename T> class AbstractLayer {
         virtual void
         DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, VectorType &plat_offsets_grad,
                TensorType &layer_gradient)=0;
+
+
+        /**
+        Member function computing the derivative of the logarithm of the wave function for a given visible vector.
+        @param input_tensor a constant reference to a visible configuration.
+        @param next_layer_gradient a constant reference to a visible configuration.
+        @return Derivatives of the logarithm of the wave function with respect to the set of parameters.
+        */
+        virtual void
+        DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, VectorType &plat_offsets_grad)=0;
     };
 }
 

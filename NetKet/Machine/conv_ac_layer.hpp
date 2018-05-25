@@ -213,7 +213,26 @@ namespace netket {
         }
 
         void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, VectorType &plat_offsets_grad,
-                    TensorType &layer_gradient) {
+                    TensorType &layer_gradient){
+            DerLog(input_tensor, next_layer_gradient, plat_offsets_grad);
+            col_grad_buffer_.setZero();
+            Matrix<T, 2, 1> vec;
+            vec << 1, 0;
+            ggemm_readc_cpu
+                    <false, false, T, Matrix<T, 2, 1>, T, Matrix<T, 2, 1>,
+                            mex_backward_bottom_finite<T>, ggemm_add<T>, false,
+                            no_op<T, Matrix<T, 2, 1>>, false,
+                            true, true, true>
+                    (number_of_input_channels_, output_height_ * output_width_, number_of_output_channels_,
+                     padded_transposed_offsets_weights_.data(), interlaced_top_buff_.get(), col_buffer_.data(),
+                     col_grad_buffer_.data(), 0, vec, num_regions_);
+            channels_first_col2im_cpu(col_grad_buffer_.data(), number_of_input_channels_, input_height_, input_width_,
+                                      kernel_height_, kernel_width_, padding_height_, padding_height_, strides_height_,
+                                      strides_width_,
+                                      layer_gradient.data(), true);
+        }
+
+        void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, VectorType &plat_offsets_grad) {
             Tensor<T, 2> src = Eigen::TensorMap<Tensor<T, 2>>(next_layer_gradient.data(), 1,
                                                               number_of_output_channels_ * output_height_ *
                                                               output_width_);
@@ -223,7 +242,6 @@ namespace netket {
             dst = src.broadcast(bcast_gates2);
             auto offsets_grad = TensorMap<Tensor<T, 4>>(plat_offsets_grad.data(), Npar());
             offsets_grad.setZero();
-            col_grad_buffer_.setZero();
             channels_first_im2col_cpu<T>(
                     input_tensor.data(),
                     number_of_input_channels_, input_height_, input_width_,
@@ -245,18 +263,6 @@ namespace netket {
                              interlaced_top_buff_.get());
             Matrix<T, 2, 1> vec;
             vec << 1, 0;
-            ggemm_readc_cpu
-                    <false, false, T, Matrix<T, 2, 1>, T, Matrix<T, 2, 1>,
-                            mex_backward_bottom_finite<T>, ggemm_add<T>, false,
-                            no_op<T, Matrix<T, 2, 1>>, false,
-                            true, true, true>
-                    (number_of_input_channels_, output_height_ * output_width_, number_of_output_channels_,
-                     padded_transposed_offsets_weights_.data(), interlaced_top_buff_.get(), col_buffer_.data(),
-                     col_grad_buffer_.data(), 0, vec, num_regions_);
-            channels_first_col2im_cpu(col_grad_buffer_.data(), number_of_input_channels_, input_height_, input_width_,
-                                      kernel_height_, kernel_width_, padding_height_, padding_height_, strides_height_,
-                                      strides_width_,
-                                      layer_gradient.data(), true);
             ggemm_readc_cpu
                     <false, true, Matrix<T, 2, 1>, T, T, Matrix<T, 2, 1>,
                             mex_backward_offsets_finite<T>, ggemm_add<T>, true,

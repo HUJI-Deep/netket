@@ -26,7 +26,7 @@ public:
     int my_mpi_node_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
     vector<TensorType> values_tensors_;
-    vector<TensorType> gradient_tensors_;
+    vector<TensorType> next_layer_gradient_tensors_;
 
     const Hilbert &hilbert_;
 
@@ -141,16 +141,24 @@ public:
     }
 
     VectorType DerLog(const VectorXd &v) override {
-//        Eigen::Matrix<T, Dynamic, 1> input(v);
-//        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1,
-//                                                        visible_height_,
-//                                                        visible_width_);
-//        for (auto const &layer: layers_) {
-//            input_tensor = layer->LogVal(input_tensor);
-//        }
-//        auto sum_result = (Eigen::Tensor<T, 1>) input_tensor.sum();
-//        return sum_result(0);
-        return VectorType{};
+//        forward pass
+        LogVal(v);
+        Eigen::Matrix<T, Dynamic, 1> input(v);
+        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1,
+                                                        visible_height_,
+                                                        visible_width_);
+        VectorType all_layers__gradient(Npar());
+        int params_id = 0;
+        for (int i=layers_.size() - 1; i > 0; --i) {
+            int layer_num_of_params = layers_[i]->Npar();
+            VectorType params_gradient = Map<VectorType>(all_layers__gradient.data() + params_id, layer_num_of_params);
+            params_id += layer_num_of_params;
+            layers_[i]->DerLog(values_tensors_[i-1], next_layer_gradient_tensors_[i], params_gradient, next_layer_gradient_tensors_[i-1]);
+        }
+        int layer_num_of_params = layers_[0]->Npar();
+        VectorType params_gradient = Map<VectorType>(all_layers__gradient.data() + params_id, layer_num_of_params);
+        layers_[0]->DerLog(input_tensor, next_layer_gradient_tensors_[0], params_gradient);
+        return all_layers__gradient;
     }
 
     void to_json(json &j) const override {
@@ -209,7 +217,9 @@ public:
             input_height = output_dims[1];
             input_width = output_dims[2];
             values_tensors_.push_back(TensorType(input_dimension, input_height, input_width));
+            next_layer_gradient_tensors_.push_back(TensorType(input_dimension, input_height, input_width));
         }
+        next_layer_gradient_tensors_.back().setConstant(T{0});
     }
 };
 }
