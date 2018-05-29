@@ -85,14 +85,14 @@ public:
 
     T LogVal(const VectorXd &v) override {
         Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1,
-                                                        visible_height_,
-                                                        visible_width_);
+        TensorMap <TensorType> input_tensor(input.data(), 1,
+                                            visible_height_,
+                                            visible_width_);
         layers_[0]->LogVal(input_tensor, values_tensors_[0]);
-        for (int i=1; i < layers_.size(); ++i) {
-            layers_[i]->LogVal(values_tensors_[i-1], values_tensors_[i]);
+        for (int i = 1; i < layers_.size(); ++i) {
+            layers_[i]->LogVal(values_tensors_[i - 1], values_tensors_[i]);
         }
-        auto sum_result = (Eigen::Tensor<T, 1>) input_tensor.sum();
+        Eigen::Tensor<T, 0> sum_result(values_tensors_[values_tensors_.size() - 1].sum());
         return sum_result(0);
     }
 
@@ -144,20 +144,27 @@ public:
 //        forward pass
         LogVal(v);
         Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorType input_tensor = TensorMap<TensorType>(input.data(), 1,
-                                                        visible_height_,
-                                                        visible_width_);
+        TensorMap <TensorType> input_tensor(input.data(), 1,
+                                            visible_height_,
+                                            visible_width_);
         VectorType all_layers__gradient(Npar());
         int params_id = 0;
-        for (int i=layers_.size() - 1; i > 0; --i) {
+        Map<VectorType> params_gradient{NULL, 0};
+        for (int i = layers_.size() - 1; i > 0; --i) {
             int layer_num_of_params = layers_[i]->Npar();
-            VectorType params_gradient = Map<VectorType>(all_layers__gradient.data() + params_id, layer_num_of_params);
+            new(&params_gradient) Map<VectorType>(
+                    all_layers__gradient.data() + params_id,
+                    layer_num_of_params);
             params_id += layer_num_of_params;
-            layers_[i]->DerLog(values_tensors_[i-1], next_layer_gradient_tensors_[i], params_gradient, next_layer_gradient_tensors_[i-1]);
+            layers_[i]->DerLog(values_tensors_[i - 1],
+                               next_layer_gradient_tensors_[i], params_gradient,
+                               next_layer_gradient_tensors_[i - 1]);
         }
         int layer_num_of_params = layers_[0]->Npar();
-        VectorType params_gradient = Map<VectorType>(all_layers__gradient.data() + params_id, layer_num_of_params);
-        layers_[0]->DerLog(input_tensor, next_layer_gradient_tensors_[0], params_gradient);
+        new(&params_gradient) Map<VectorType>(
+                all_layers__gradient.data() + params_id, layer_num_of_params);
+        layers_[0]->DerLog(input_tensor, next_layer_gradient_tensors_[0],
+                           params_gradient);
         return all_layers__gradient;
     }
 
@@ -200,26 +207,34 @@ public:
             }
             std::abort();
         }
-        if (FieldExists(pars["Machine"], "Layers")) {
+        if (!FieldExists(pars["Machine"], "Layers")) {
             if (my_mpi_node_ == 0) {
                 cerr << "# ConvAC Machines must have layers attribute" << endl;
             }
             std::abort();
         }
-        int input_dimension = number_of_visible_units_;
+        int input_dimension = 1;
         int input_height = visible_height_;
         int input_width = visible_width_;
         for (auto const &layer: pars["Machine"]["Layers"]) {
             layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
-                    new ConvACLayer<T>(layer, input_dimension, input_height, input_width)));
+                    new ConvACLayer<T>(layer, input_dimension, input_height,
+                                       input_width)));
+            if (my_mpi_node_ == 0) {
+                std::cout << "Adding Layeri with " << layers_.back()->Npar()
+                          << " params" << std::endl;
+            }
+
             auto output_dims = layers_.back()->Noutput();
             input_dimension = output_dims[0];
             input_height = output_dims[1];
             input_width = output_dims[2];
-            values_tensors_.push_back(TensorType(input_dimension, input_height, input_width));
-            next_layer_gradient_tensors_.push_back(TensorType(input_dimension, input_height, input_width));
+            values_tensors_.push_back(
+                    TensorType(input_dimension, input_height, input_width));
+            next_layer_gradient_tensors_.push_back(
+                    TensorType(input_dimension, input_height, input_width));
         }
-        next_layer_gradient_tensors_.back().setConstant(T{0});
+        next_layer_gradient_tensors_.back().setConstant(T{1});
     }
 };
 }

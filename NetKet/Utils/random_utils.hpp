@@ -23,12 +23,36 @@ namespace netket {
 using default_random_engine = std::mt19937;
 
 template <typename T>
-void RandomGaussian(Eigen::Matrix<T, Eigen::Dynamic, 1> &par,
-                    std::default_random_engine &generator, double sigma) {
+using enable_if_real_type = typename std::enable_if<std::is_floating_point<T>::value>::type;
+
+template<typename T>
+struct is_complex{
+    static constexpr bool value{false};
+};
+
+template<typename T>
+struct is_complex<std::complex<T >>{
+    static constexpr bool value{true};
+};
+
+
+template<typename T>
+using enable_if_complex_type = typename std::enable_if<is_complex<T>::value>::type;
+
+
+template <typename Derive, typename Enable=void>
+void RandomGaussian(Eigen::MatrixBase<Derive> &, std::default_random_engine &, double) {
 }
 
-template<>
-void RandomGaussian(Eigen::Matrix<double, Eigen::Dynamic, 1> &par,
+template <typename Derive, typename Enable=void>
+void RandomGaussian(Eigen::MatrixBase<Derive> &par,
+                    int seed, double sigma) {
+  std::default_random_engine generator(seed);
+  RandomGaussian<Derive, Enable>(par, generator, sigma);
+}
+
+template<typename Derive, enable_if_real_type<typename Derive::Scalar>>
+void RandomGaussian(Eigen::MatrixBase<Derive> &par,
                     std::default_random_engine &generator, double sigma) {
   std::normal_distribution<double> distribution(0, sigma);
   for (int i = 0; i < par.size(); i++) {
@@ -36,21 +60,14 @@ void RandomGaussian(Eigen::Matrix<double, Eigen::Dynamic, 1> &par,
   }
 }
 
-template<>
-void RandomGaussian(Eigen::Matrix<std::complex<double>, Eigen::Dynamic, 1> &par,
-               std::default_random_engine &generator, double sigma) {
+template<typename Derive, enable_if_complex_type<typename Derive::Scalar>>
+void RandomGaussian(Eigen::MatrixBase<Derive> &par,
+                    std::default_random_engine &generator, double sigma) {
   std::normal_distribution<double> distribution(0, sigma);
   for (int i = 0; i < par.size(); i++) {
     par(i) = std::complex<double>(distribution(generator),
                                   distribution(generator));
   }
-}
-
-template <typename T>
-void RandomGaussian(Eigen::Matrix<T, Eigen::Dynamic, 1> &par,
-                                  int seed, double sigma) {
-  std::default_random_engine generator(seed);
-  RandomGaussian<T>(par, generator, sigma);
 }
 
 }  // namespace netket

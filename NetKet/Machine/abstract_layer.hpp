@@ -140,7 +140,7 @@ template<typename T> class AbstractLayer {
         @return Derivatives of the logarithm of the wave function with respect to the set of parameters.
         */
         virtual void
-        DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, VectorType &plat_offsets_grad,
+        DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, Eigen::Map<VectorType> &plat_offsets_grad,
                TensorType &layer_gradient)=0;
 
 
@@ -151,7 +151,7 @@ template<typename T> class AbstractLayer {
         @return Derivatives of the logarithm of the wave function with respect to the set of parameters.
         */
         virtual void
-        DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, VectorType &plat_offsets_grad)=0;
+        DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient, Eigen::Map<VectorType> &plat_offsets_grad)=0;
     };
 }
 
