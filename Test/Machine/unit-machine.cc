@@ -193,6 +193,101 @@ TEST_CASE("machines compute logval differences correctly", "[machine]") {
   }
 }
 
+TEST_CASE("conv_ac layer sanity calculation", "[layer"){
+    netket::json layer_params{
+            {"Name", "ConvACLayer"},
+            {"kernel_width", 2},
+            {"kernel_height", 2},
+            {"padding_width", 1},
+            {"padding_height", 1},
+            {"strides_width", 1},
+            {"strides_height", 1},
+            {"number_of_output_channels", 1}
+    };
+    typedef std::complex<double> complex;
+    netket::ConvACLayer<complex> layer(layer_params, 2, 2, 2);
+    Eigen::VectorXcd kernel_params(8);
+    Eigen::VectorXcd kernel_params_gradient(8);
+    Eigen::VectorXcd expected_kernel_params_gradient(8);
+    Eigen::Tensor<complex , 3> input_tensor(2, 2, 2);
+    Eigen::Tensor<complex , 3> input_gradient(2, 2, 2);
+    Eigen::Tensor<complex , 3> expected_input_gradient(2, 2, 2);
+    Eigen::Tensor<complex, 3> expected_output_tensor(1, 2, 2);
+    Eigen::Tensor<complex, 3> next_layer_gradient(1, 2, 2);
+    Eigen::Tensor<complex, 3> output_tensor(1, 2, 2);
+    Eigen::TensorMap<Eigen::Tensor<complex, 4>> kernel_params_mapping(
+        kernel_params.data(), 2,2, 1,2);
+    kernel_params_mapping(0,0,0,0) = std::log(0.5);
+    kernel_params_mapping(0,0,0,1) = std::log(0.5);
+    kernel_params_mapping(0,1,0,0) = std::log(1/3.0);
+    kernel_params_mapping(0,1,0,1) = std::log(2/3.0);
+    kernel_params_mapping(1,0,0,0) = std::log(0.25);
+    kernel_params_mapping(1,0,0,1) = std::log(0.75);
+    kernel_params_mapping(1,1,0,0) = std::log(0.2);
+    kernel_params_mapping(1,1,0,1) = std::log(0.8);
+    layer.SetParameters(kernel_params, 0);
+    std::complex<double> log_zero = -std::numeric_limits<double>::infinity();
+    input_tensor(0,0,0) = 0;
+    input_tensor(0,1,0) = 0;
+    input_tensor(0,0,1) = log_zero;
+    input_tensor(0,1,1) = log_zero;
+    input_tensor(1,0,0) = log_zero;
+    input_tensor(1,1,0) = log_zero;
+    input_tensor(1,0,1) = 0;
+    input_tensor(1,1,1) = 0;
+    expected_output_tensor(0,0,0) = std::log(0.2);
+    expected_output_tensor(0,1,0) = std::log(1/15.0);
+    expected_output_tensor(0,0,1) = std::log(0.2);
+    expected_output_tensor(0,1,1) = std::log(1/15.0);
+    Eigen::TensorMap<Eigen::Tensor<complex, 4>> expected_kernel_params_gradient_mapping(
+            expected_kernel_params_gradient.data(), 2,2, 1,2);
+    expected_kernel_params_gradient_mapping(0,0,0,0) = complex{std::log(5/2.0),0};
+    expected_kernel_params_gradient_mapping(0,0,0,1) = complex{std::log(3/2.0),0};
+    expected_kernel_params_gradient_mapping(0,1,0,0) = complex{std::log(5/3.0),0};
+    expected_kernel_params_gradient_mapping(0,1,0,1) = complex{std::log(7/3.0),0};
+    expected_kernel_params_gradient_mapping(1,0,0,0) = complex{std::log(5/2.0),0};
+    expected_kernel_params_gradient_mapping(1,0,0,1) = complex{std::log(3/2.0),0};
+    expected_kernel_params_gradient_mapping(1,1,0,0) = complex{std::log(2.0),0};
+    expected_kernel_params_gradient_mapping(1,1,0,1) = complex{std::log(2.0),0};
+    layer.LogVal(input_tensor, output_tensor);
+    std::cout << "output tensor:"<< std::endl << output_tensor.exp() << std::endl;
+    for (int i=0; i < 2; ++i){
+        for (int j=0; j < 2; ++j){
+            REQUIRE(Approx(std::real(expected_output_tensor(0,i,j))).margin(1.0e-6) ==
+                            std::real(output_tensor(0,i,j)));
+            REQUIRE(Approx(std::imag(expected_output_tensor(0,i,j))).margin(1.0e-6) ==
+                    std::imag(output_tensor(0,i,j)));
+        }
+    }
+    next_layer_gradient.setZero();
+    Eigen::Map<Eigen::Matrix<std::complex<double>, -1, 1>> params_gradient(kernel_params_gradient.data(), 8);
+    layer.DerLog(input_tensor, next_layer_gradient, params_gradient, input_gradient);
+    for (int j=0; j < 8; ++j){
+        REQUIRE(Approx(std::real(expected_kernel_params_gradient(j))).margin(1.0e-6) ==
+        std::real(kernel_params_gradient(j)));
+        REQUIRE(Approx(std::imag(expected_kernel_params_gradient(j))).margin(1.0e-6) ==
+        std::imag(kernel_params_gradient(j)));
+    }
+    expected_input_gradient(0,0,0) = complex{std::log(4),0};
+    expected_input_gradient(0,0,1) = log_zero;
+    expected_input_gradient(0,1,0) = complex{std::log(2),0};
+    expected_input_gradient(0,1,1) = log_zero;
+    expected_input_gradient(1,0,0) = log_zero;
+    expected_input_gradient(1,0,1) = complex{std::log(2.0),0};
+    expected_input_gradient(1,1,0) = log_zero;
+    expected_input_gradient(1,1,1) = complex{std::log(1.0),0};
+    for (int i=0; i < 2; ++i){
+        for (int j=0; j < 2; ++j){
+            for (int k=0; k < 2; ++k){
+                REQUIRE(Approx(std::real(expected_input_gradient(i,j,k))).margin(1.0e-6) ==
+                        std::real(input_gradient(i,j,k)));
+                REQUIRE(Approx(std::imag(expected_input_gradient(i,j,k))).margin(1.0e-6) ==
+                        std::imag(input_gradient(i,j,k)));
+            }
+        }
+    }
+}
+
 TEST_CASE("machines update look-up tables correctly", "[machine]") {
   auto input_tests = GetMachineInputs();
   std::size_t ntests = input_tests.size();

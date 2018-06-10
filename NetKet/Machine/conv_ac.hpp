@@ -1,3 +1,17 @@
+// Copyright 2018 The Simons Foundation, Inc. - All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef NETKET_CONV_AC_HH
 #define NETKET_CONV_AC_HH
 
@@ -26,7 +40,7 @@ public:
     int my_mpi_node_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
     vector<TensorType> values_tensors_;
-    vector<TensorType> next_layer_gradient_tensors_;
+    vector<TensorType> input_gradient_tensors_;
 
     const Hilbert &hilbert_;
 
@@ -141,31 +155,30 @@ public:
     }
 
     VectorType DerLog(const VectorXd &v) override {
-//        forward pass
-        LogVal(v);
+        T forward_value = LogVal(v);
         Eigen::Matrix<T, Dynamic, 1> input(v);
         TensorMap <TensorType> input_tensor(input.data(), 1,
                                             visible_height_,
                                             visible_width_);
         VectorType all_layers__gradient(Npar());
-        int params_id = 0;
+        int params_id = Npar();
         Map<VectorType> params_gradient{NULL, 0};
         for (int i = layers_.size() - 1; i > 0; --i) {
             int layer_num_of_params = layers_[i]->Npar();
+            params_id -= layer_num_of_params;
             new(&params_gradient) Map<VectorType>(
                     all_layers__gradient.data() + params_id,
                     layer_num_of_params);
-            params_id += layer_num_of_params;
             layers_[i]->DerLog(values_tensors_[i - 1],
-                               next_layer_gradient_tensors_[i], params_gradient,
-                               next_layer_gradient_tensors_[i - 1]);
+                               input_gradient_tensors_[i], params_gradient,
+                               input_gradient_tensors_[i - 1]);
         }
         int layer_num_of_params = layers_[0]->Npar();
         new(&params_gradient) Map<VectorType>(
-                all_layers__gradient.data() + params_id, layer_num_of_params);
-        layers_[0]->DerLog(input_tensor, next_layer_gradient_tensors_[0],
+                all_layers__gradient.data(), layer_num_of_params);
+        layers_[0]->DerLog(input_tensor, input_gradient_tensors_[0],
                            params_gradient);
-        return all_layers__gradient;
+        return all_layers__gradient.unaryExpr(Eigen::internal::scalar_exp_op<std::complex<double>>());
     }
 
     void to_json(json &j) const override {
@@ -221,7 +234,7 @@ public:
                     new ConvACLayer<T>(layer, input_dimension, input_height,
                                        input_width)));
             if (my_mpi_node_ == 0) {
-                std::cout << "Adding Layeri with " << layers_.back()->Npar()
+                std::cout << "Adding Layer with " << layers_.back()->Npar()
                           << " params" << std::endl;
             }
 
@@ -231,10 +244,10 @@ public:
             input_width = output_dims[2];
             values_tensors_.push_back(
                     TensorType(input_dimension, input_height, input_width));
-            next_layer_gradient_tensors_.push_back(
+            input_gradient_tensors_.push_back(
                     TensorType(input_dimension, input_height, input_width));
         }
-        next_layer_gradient_tensors_.back().setConstant(T{1});
+        input_gradient_tensors_.back().setZero();
     }
 };
 }
