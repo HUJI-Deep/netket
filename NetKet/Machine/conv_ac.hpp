@@ -48,8 +48,8 @@ public:
     ConvAC(const Hilbert &hilbert, const json &pars) :
             number_of_visible_units_(hilbert.Size()),
             hilbert_(hilbert) {
-        from_json(pars);
         InirMPI();
+        from_json(pars);
     }
 
     void InirMPI() {
