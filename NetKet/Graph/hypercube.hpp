@@ -51,9 +51,13 @@ class Hypercube : public AbstractGraph {
  public:
   // Json constructor
   explicit Hypercube(const json &pars)
-      : L_(FieldVal(pars["Graph"], "L")),
-        ndim_(FieldVal(pars["Graph"], "Dimension")),
+      : L_(FieldVal(pars["Graph"], "L", "Graph")),
+        ndim_(FieldVal(pars["Graph"], "Dimension", "Graph")),
         pbc_(FieldOrDefaultVal(pars["Graph"], "Pbc", true)) {
+    if(pbc_ && L_ <= 2)
+    {
+        throw InvalidInputError("L<=2 hypercubes cannot have periodic boundary conditions");
+    }
     Init();
   }
 
@@ -116,10 +120,8 @@ class Hypercube : public AbstractGraph {
   // translation symmetry
   std::vector<std::vector<int>> SymmetryTable() const override {
     if (!pbc_) {
-      std::cerr << "Cannot generate translation symmetries in the hypercube "
-                   "without PBC"
-                << std::endl;
-      std::abort();
+      throw InvalidInputError("Cannot generate translation symmetries "
+                              "in the hypercube without PBC");
     }
 
     std::vector<std::vector<int>> permtable;
