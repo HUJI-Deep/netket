@@ -281,7 +281,7 @@ public:
     }
 
     void LogVal(const TensorType &layer_input, TensorType &output_tensor,
-                LookupType &lt) {
+                const LookupType &lt) {
         LogVal(layer_input, output_tensor);
     }
 

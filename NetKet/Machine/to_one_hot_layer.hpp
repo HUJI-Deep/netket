@@ -82,7 +82,7 @@ public:
     }
 
     void LogVal(const TensorType &layer_input, TensorType &output_tensor,
-                LookupType &lt) override {
+                const LookupType &lt) override {
         LogVal(layer_input, output_tensor);
     }
 

@@ -93,7 +93,7 @@ template<typename T> class AbstractLayer {
         @param lt a constant eference to the look-up table.
         @return Logarithm of the layer output.
         */
-        virtual void LogVal(const TensorType &layer_input, TensorType &output_tensor, LookupType &lt)=0;
+        virtual void LogVal(const TensorType &layer_input, TensorType &output_tensor, const LookupType &lt)=0;
 
         /**
         Member function initializing the look-up tables.
