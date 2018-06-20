@@ -112,20 +112,25 @@ public:
     }
 
     T LogVal(const VectorXd &v, const LookupType &lt) override {
-        return LogVal(v);
+        return lt.V(0)(0);
     }
 
     void InitLookup(const VectorXd &v, LookupType &lt) override {
-        for (auto const &layer: layers_) {
-            layer->InitLookup(v, lt);
+        if (lt.VectorSize() == 0) {
+            lt.AddVector(1);
         }
+        lt.V(0)(0) = LogVal(v);
+//        layers_[0]->InitLookup(v, lt);
     }
 
-    void UpdateLookup(const VectorXd &v, const vector<int> &tochange,
+    void UpdateLookup(const VectorXd &orig_vector, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
-        for (auto const &layer: layers_) {
-            layer->UpdateLookup(v, tochange, newconf, lt);
+        VectorXd new_vector(orig_vector);
+        for (std::size_t s = 0; s < tochange.size(); s++) {
+            new_vector[tochange[s]] = newconf[s];
         }
+        lt.V(0)(0) = LogVal(new_vector);
+//        layers_[0]->UpdateLookup(v, tochange, newconf, lt);
     }
 
     VectorType
@@ -147,7 +152,7 @@ public:
 
     T LogValDiff(const VectorXd &v, const vector<int> &tochange,
                  const vector<double> &newconf, const LookupType &lt) override {
-        T orig_log_value = LogVal(v);
+        T orig_log_value = lt.V(0)(0);
         VectorXd new_vector(v);
         for (std::size_t s = 0; s < tochange.size(); s++) {
             new_vector[tochange[s]] = newconf[s];
