@@ -111,7 +111,7 @@ public:
         return sum_result(0);
     }
 
-    T LogVal(const VectorXd &v, LookupType &lt) override {
+    T LogVal(const VectorXd &v, const LookupType &lt) override {
         return LogVal(v);
     }
 
