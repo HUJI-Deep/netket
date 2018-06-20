@@ -78,7 +78,7 @@ class AbstractMachine {
   /**
   Member function computing the logarithm of the wave function for a given
   visible vector. Given the current set of parameters, this function should
-  comput the value of the logarithm of the wave function using the information
+  compute the value of the logarithm of the wave function using the information
   provided in the look-up table, to speed up the computation.
   @param v a constant reference to a visible configuration.
   @param lt a constant eference to the look-up table.

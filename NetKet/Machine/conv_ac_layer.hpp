@@ -36,6 +36,7 @@ class ConvACLayer : public AbstractLayer<T> {
     using MatrixType=typename AbstractLayer<T>::MatrixType;
     using TensorType=typename AbstractLayer<T>::TensorType;
 
+    bool init_in_log_space_;
     int number_of_input_channels_;
     int input_height_;
     int input_width_;
@@ -56,9 +57,10 @@ class ConvACLayer : public AbstractLayer<T> {
 
     typedef const Eigen::TensorCwiseBinaryOp<Eigen::internal::scalar_sum_op<T, T >, const Eigen::TensorBroadcastingOp<const std::array<long int, 5>, const Eigen::TensorReshapingOp<const std::array<long int, 5>, Eigen::Tensor<T, 4, 0, long int> > >, const Eigen::TensorBroadcastingOp<const std::array<long int, 5>, const Eigen::TensorReshapingOp<const std::array<long int, 5>, Eigen::TensorShufflingOp<const std::array<long int, 4>, Eigen::Tensor<T, 4, 0, long int> > > > > SumConvolutionResults;
 
-    int read_layer_param_from_json(const json &pars, const string &param_name) {
+    template <typename ParamType>
+    void read_layer_param_from_json(const json &pars, const string &param_name, ParamType &param_value) {
         if (FieldExists(pars, param_name)) {
-            return FieldVal(pars, param_name);
+            param_value = FieldVal(pars, param_name);
         } else {
             if (my_mpi_node_ == 0) {
                 cerr
@@ -109,14 +111,14 @@ class ConvACLayer : public AbstractLayer<T> {
     }
 
     void update_layer_properties(const json &pars) {
-        number_of_output_channels_ = read_layer_param_from_json(pars,
-                                                                "number_of_output_channels");
-        kernel_width_ = read_layer_param_from_json(pars, "kernel_width");
-        kernel_height_ = read_layer_param_from_json(pars, "kernel_height");
-        strides_width_ = read_layer_param_from_json(pars, "strides_width");
-        strides_height_ = read_layer_param_from_json(pars, "strides_height");
-        padding_width_ = read_layer_param_from_json(pars, "padding_width");
-        padding_height_ = read_layer_param_from_json(pars, "padding_height");
+        read_layer_param_from_json(pars,"number_of_output_channels", number_of_output_channels_);
+        read_layer_param_from_json(pars, "kernel_width", kernel_width_ );
+        read_layer_param_from_json(pars, "kernel_height", kernel_height_ );
+        read_layer_param_from_json(pars, "strides_width", strides_width_ );
+        read_layer_param_from_json(pars, "strides_height", strides_height_ );
+        read_layer_param_from_json(pars, "padding_width", padding_width_ );
+        read_layer_param_from_json(pars, "padding_height", padding_height_ );
+        read_layer_param_from_json(pars, "init_in_log_space", init_in_log_space_ );
         output_height_ = dimension_out_size(input_height_,
                                             padding_height_, 0,
                                             kernel_height_,
@@ -190,11 +192,6 @@ public:
                                     output_width_};
     }
 
-
-    int Nvisible() const {
-        return number_of_input_channels_;
-    }
-
     int Npar() const {
         return number_of_input_channels_ * number_of_output_channels_ *
                kernel_height_ * kernel_width_;
@@ -203,8 +200,9 @@ public:
     void InitRandomPars(std::default_random_engine &generator, double sigma) {
         Map<VectorType> par(offsets_weights_.data(), Npar());
         netket::RandomGaussian<Map<VectorType>, true>(par, generator, sigma);
-//        maybe we need to init with the log of RandomGaussian ?
-//        par = par.unaryExpr(Eigen::internal::scalar_log_op<std::complex<double>>());
+        if (init_in_log_space_){
+            par = par.unaryExpr(Eigen::internal::scalar_log_op<std::complex<double>>());
+        }
         SetParameters(par, 0);
     }
 
@@ -295,6 +293,7 @@ public:
         j["kernel_height"] = kernel_height_;
         j["strides_width"] = strides_width_;
         j["strides_height"] = strides_height_;
+        j["init_in_log_space"] = init_in_log_space_;
         VectorType params_vector(Npar());
         GetParameters(params_vector, 0);
         j["offsets_weights"] = params_vector;

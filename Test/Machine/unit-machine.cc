@@ -201,7 +201,7 @@ TEST_CASE("conv_ac layer sanity calculation", "[layer"){
             {"padding_width", 1},
             {"padding_height", 1},
             {"strides_width", 1},
-            {"strides_height", 1},
+            {"strides_height", 1},{"init_in_log_space", false},
             {"number_of_output_channels", 1}
     };
     typedef std::complex<double> complex;

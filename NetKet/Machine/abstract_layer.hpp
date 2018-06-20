@@ -69,12 +69,6 @@ template<typename T> class AbstractLayer {
 
 
         /**
-        Member function returning the number of visible units.
-        @return Number of visible units in the Layer.
-        */
-        virtual int Nvisible() const =0;
-
-        /**
         Member function returning the number of output units.
         @return Number of output units of the Layer.
         */
@@ -83,7 +77,7 @@ template<typename T> class AbstractLayer {
 
         /**
         Member function computing the logarithm of the wave function for a given visible vector.
-        Given the current set of parameters, this function should comput the value
+        Given the current set of parameters, this function should compute the value
         of the logarithm of the wave function from scratch.
         @param t a constant reference to previous layer output.
         @return Logarithm of the layer output.

@@ -17,6 +17,7 @@
 
 #include "abstract_machine.hpp"
 #include "conv_ac_layer.hpp"
+#include "to_one_hot_layer.hpp"
 
 namespace netket {
 
@@ -230,9 +231,21 @@ public:
         int input_height = visible_height_;
         int input_width = visible_width_;
         for (auto const &layer: pars["Machine"]["Layers"]) {
-            layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
-                    new ConvACLayer<T>(layer, input_dimension, input_height,
-                                       input_width)));
+            if (FieldVal(layer, "Name") == "ConvACLayer"){
+                layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
+                        new ConvACLayer<T>(layer, input_dimension, input_height,
+                                           input_width)));
+            }
+            else if (FieldVal(layer, "Name") == "ToOneHotLayer"){
+                layers_.push_back(std::unique_ptr<ToOneHotLayer<T>>(
+                        new ToOneHotLayer<T>(layer, input_height, input_width)));
+            }
+            else{
+                if (my_mpi_node_ == 0) {
+                    cerr << "Unknown layers type : " << FieldVal(layer, "Name") << endl;
+                }
+                std::abort();
+            }
             if (my_mpi_node_ == 0) {
                 std::cout << "Adding Layer with " << layers_.back()->Npar()
                           << " params" << std::endl;
