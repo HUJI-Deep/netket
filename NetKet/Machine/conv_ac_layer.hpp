@@ -37,6 +37,7 @@ class ConvACLayer : public AbstractLayer<T> {
     using TensorType=typename AbstractLayer<T>::TensorType;
 
     bool init_in_log_space_;
+    bool normalize_input_channels_;
     int number_of_input_channels_;
     int input_height_;
     int input_width_;
@@ -119,6 +120,7 @@ class ConvACLayer : public AbstractLayer<T> {
         read_layer_param_from_json(pars, "padding_width", padding_width_ );
         read_layer_param_from_json(pars, "padding_height", padding_height_ );
         read_layer_param_from_json(pars, "init_in_log_space", init_in_log_space_ );
+        read_layer_param_from_json(pars, "normalize_input_channels", normalize_input_channels_ );
         output_height_ = dimension_out_size(input_height_,
                                             padding_height_, 0,
                                             kernel_height_,
@@ -174,6 +176,16 @@ public:
                 kernel_width_, number_of_output_channels_,
                 number_of_input_channels_);
         offsets_weights_ = pars_mapping;
+        if (normalize_input_channels_){
+            Eigen::array<long, 1> input_channel_axis({3});
+            Eigen::array<long, 4> logsumexp_shape{kernel_height_,kernel_width_,number_of_output_channels_, 1};
+            Eigen::array<long, 4> logsumexp_bcast_shape{kernel_height_,kernel_width_,number_of_output_channels_, number_of_input_channels_};
+            auto max_per_input_channel = offsets_weights_.real().maximum(input_channel_axis).eval();
+            auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(logsumexp_shape).broadcast(logsumexp_bcast_shape);
+            auto logsumexp_input_channel = ((offsets_weights_.real() - max_per_input_channel_broadcasted).exp().sum(input_channel_axis).log() + max_per_input_channel).eval();
+            auto logsumexp_input_channel_broadcasted = logsumexp_input_channel.reshape(logsumexp_shape).broadcast(logsumexp_bcast_shape);
+            offsets_weights_ = offsets_weights_ - logsumexp_input_channel_broadcasted;
+        }
     }
 
     void InitLookup(const VectorXd &v, LookupType &lt) override {
@@ -219,7 +231,7 @@ public:
         auto offsets_broadcasted = offsets_weights_.shuffle(Eigen::array<long, 4>{3,2,0,1}).reshape(offsets_shape).broadcast(offsets_bcast_shape);
         auto element_wise_sum = input_broadcasted + offsets_broadcasted;
         Eigen::array<long, 1> input_channel_axis{0};
-        auto max_per_input_channel = element_wise_sum.maximum(input_channel_axis).eval();
+        auto max_per_input_channel = element_wise_sum.real().maximum(input_channel_axis).eval();
         Eigen::array<long, 6> logsumexp_shape{1, number_of_output_channels_, kernel_height_,kernel_width_,input_height_, input_width_};
         Eigen::array<long, 6> logsumexp_bcast_shape({number_of_input_channels_, 1, 1, 1, 1, 1});
         auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(logsumexp_shape).broadcast(logsumexp_bcast_shape);
@@ -235,7 +247,7 @@ public:
         auto next_layer_gradient_patches_broadcasted = next_layer_gradient_patches.reshape(next_layer_gradient_shape).broadcast(next_layer_gradient_bcast_shape);
         auto chain_rule_before_sum = spatial_gradients + next_layer_gradient_patches_broadcasted;
         Eigen::array<long, 3> spatial_location_axis{1,2,3};
-        auto max_per_spatial_location = chain_rule_before_sum.maximum(spatial_location_axis).eval();
+        auto max_per_spatial_location = chain_rule_before_sum.real().maximum(spatial_location_axis).eval();
         Eigen::array<long, 6> chain_rule_logsumexp_shape{number_of_input_channels_ ,1,1, 1,input_height_, input_width_};
         Eigen::array<long, 6> chain_rule_logsumexp_bcast_shape({1, number_of_output_channels_, kernel_height_, kernel_width_, 1, 1});
         auto max_per_spatial_location_broadcasted = max_per_spatial_location.reshape(chain_rule_logsumexp_shape).broadcast(chain_rule_logsumexp_bcast_shape);
@@ -250,7 +262,7 @@ public:
                 number_of_input_channels_);
         auto element_wise_sum = sum_convolution(input_tensor);
         Eigen::array<long, 1> input_channel_axis{1};
-        auto max_per_input_channel = element_wise_sum.maximum(input_channel_axis).eval();
+        auto max_per_input_channel = element_wise_sum.real().maximum(input_channel_axis).eval();
         Eigen::array<long, 5> logsumexp_shape{number_of_output_channels_,1 ,input_patches_.dimension(1),input_patches_.dimension(2),input_patches_.dimension(3)};
         Eigen::array<long, 5> logsumexp_bcast_shape({1, input_patches_.dimension(0), 1, 1, 1});
         auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(logsumexp_shape).broadcast(logsumexp_bcast_shape);
@@ -260,7 +272,7 @@ public:
         auto next_layer_gradient_broadcasted = next_layer_gradient.reshape(Eigen::array<long, 5>{number_of_output_channels_,1,1,1,output_height_*output_width_}).broadcast(Eigen::array<long, 5>{1,number_of_input_channels_,kernel_height_, kernel_width_, 1});
         auto chain_rule_before_sum = spatial_gradients + next_layer_gradient_broadcasted;
         Eigen::array<long, 1> spatial_location_axis{4};
-        auto max_per_spatial_location = chain_rule_before_sum.maximum(spatial_location_axis).eval();
+        auto max_per_spatial_location = chain_rule_before_sum.real().maximum(spatial_location_axis).eval();
         Eigen::array<long, 5> chain_rule_logsumexp_shape{number_of_output_channels_,number_of_input_channels_ ,kernel_height_, kernel_width_,1};
         Eigen::array<long, 5> chain_rule_logsumexp_bcast_shape({1, 1, 1, 1, output_height_*output_width_});
         auto max_per_spatial_location_broadcasted = max_per_spatial_location.reshape(chain_rule_logsumexp_shape).broadcast(chain_rule_logsumexp_bcast_shape);
@@ -271,7 +283,7 @@ public:
     void LogVal(const TensorType &input_tensor, TensorType &output_tensor) {
         auto element_wise_sum = sum_convolution(input_tensor);
         Eigen::array<long, 1> input_channel_axis{1};
-        auto max_per_input_channel = element_wise_sum.maximum(input_channel_axis).eval();
+        auto max_per_input_channel = element_wise_sum.real().maximum(input_channel_axis).eval();
         Eigen::array<long, 5> logsumexp_shape{number_of_output_channels_,1 ,input_patches_.dimension(1),input_patches_.dimension(2),input_patches_.dimension(3)};
         Eigen::array<long, 5> logsumexp_bcast_shape({1, number_of_input_channels_, 1, 1, 1});
         auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(logsumexp_shape).broadcast(logsumexp_bcast_shape);
@@ -309,12 +321,6 @@ public:
         }
     }
 };
-}
-
-template<typename T>
-bool operator>( const std::complex<T>& c1, const std::complex<T>& c2 )
-{
-    return c1.real() > c2.real();
 }
 
 #endif

@@ -23,7 +23,7 @@ std::vector<netket::json> GetMachineInputs() {
                   {"padding_width", 0},
                   {"padding_height", 1},
                   {"strides_width", 1},
-                  {"strides_height", 1},{"init_in_log_space", true},
+                  {"strides_height", 1},{"init_in_log_space", true}, {"normalize_input_channels", false},
                   {"number_of_output_channels", 2}
           }}}}},
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
@@ -37,7 +37,7 @@ std::vector<netket::json> GetMachineInputs() {
                  {"padding_width", 0},
                  {"padding_height", 1},
                  {"strides_width", 1},
-                 {"strides_height", 1},{"init_in_log_space", false},
+                 {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
                  {"number_of_output_channels", 2}
          }}}}},
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
@@ -51,7 +51,7 @@ std::vector<netket::json> GetMachineInputs() {
                  {"padding_width", 0},
                  {"padding_height", 2},
                  {"strides_width", 1},
-                 {"strides_height", 1},{"init_in_log_space", false},
+                 {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
                  {"number_of_output_channels", 2}
          },
         {
@@ -61,7 +61,7 @@ std::vector<netket::json> GetMachineInputs() {
                 {"padding_width", 0},
                 {"padding_height", 2},
                 {"strides_width", 1},
-                {"strides_height", 1},{"init_in_log_space", false},
+                {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
                 {"number_of_output_channels", 2}
         }}}}},
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
