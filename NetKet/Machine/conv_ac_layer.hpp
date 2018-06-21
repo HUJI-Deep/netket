@@ -376,7 +376,7 @@ public:
                 spatial_gradients + next_layer_gradient_broadcasted;
         Eigen::array<long, 1> spatial_location_axis{4};
         auto max_per_spatial_location = chain_rule_before_sum.real().maximum(
-                spatial_location_axis).eval();
+                spatial_location_axis).cwiseMax(MINUS_INFINITY).eval();
         Eigen::array<long, 5> chain_rule_logsumexp_shape{
                 number_of_output_channels_, number_of_input_channels_,
                 kernel_height_, kernel_width_, 1};
