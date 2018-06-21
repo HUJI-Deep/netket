@@ -201,7 +201,7 @@ TEST_CASE("conv_ac layer sanity calculation", "[layer"){
             {"padding_width", 1},
             {"padding_height", 1},
             {"strides_width", 1},
-            {"strides_height", 1},{"init_in_log_space", false},
+            {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
             {"number_of_output_channels", 1}
     };
     typedef std::complex<double> complex;
@@ -276,6 +276,7 @@ TEST_CASE("conv_ac layer sanity calculation", "[layer"){
     expected_input_gradient(1,0,1) = complex{std::log(2.0),0};
     expected_input_gradient(1,1,0) = log_zero;
     expected_input_gradient(1,1,1) = complex{std::log(1.0),0};
+    std::cout << "input_gradient:"<< std::endl << input_gradient.exp() << std::endl;
     for (int i=0; i < 2; ++i){
         for (int j=0; j < 2; ++j){
             for (int k=0; k < 2; ++k){
