@@ -29,16 +29,16 @@ std::vector<netket::json> GetMachineInputs() {
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
   input_tests.push_back(pars);
 
-  pars = {{"Graph", {{"Name", "Hypercube"}, {"L", 20}, {"Dimension", 1}, {"Pbc", true}}},
-          {"Machine", {{"Name", "ConvAC"}, {"Alpha", 1.0}, {"visible_height", 20}, {"Layers", {{{"Name", "ToOneHotLayer"}}, {
+  pars = {{"Graph", {{"Name", "Hypercube"}, {"L", 3}, {"Dimension", 1}, {"Pbc", true}}},
+          {"Machine", {{"Name", "ConvAC"}, {"Alpha", 1.0},{"Layers", {{{"Name", "ToOneHotLayer"}}, {
                  {"Name", "ConvACLayer"},
                  {"kernel_width", 1},
                  {"kernel_height", 3},
                  {"padding_width", 0},
-                 {"padding_height", 1},
+                 {"padding_height", 2},
                  {"strides_width", 1},
                  {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
-                 {"number_of_output_channels", 2}
+                 {"number_of_output_channels", 1}
          }}}}},
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
   input_tests.push_back(pars);

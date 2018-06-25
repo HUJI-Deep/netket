@@ -16,19 +16,22 @@
 #define NETKET_LOOKUP_HPP
 
 #include <Eigen/Dense>
+#include <unsupported/Eigen/CXX11/Tensor>
 #include <cassert>
 #include <vector>
 
 namespace netket {
 
 // Generic look-up table
-template <class T>
+template <class Type>
 class Lookup {
-  using VectorType = Eigen::Matrix<T, Eigen::Dynamic, 1>;
-  using MatrixType = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
-
+  using VectorType = Eigen::Matrix<Type, Eigen::Dynamic, 1>;
+  using MatrixType = Eigen::Matrix<Type, Eigen::Dynamic, Eigen::Dynamic>;
+  using TensorType = Eigen::Tensor<Type, 3>;
+  
   std::vector<VectorType> v_;
   std::vector<MatrixType> m_;
+  std::vector<TensorType> t_;
 
  public:
   int AddVector(int a) {
@@ -41,9 +44,16 @@ class Lookup {
     return m_.size() - 1;
   }
 
+  int AddTensor(int a, int b, int c) {
+    t_.push_back(TensorType(a, b, c));
+    return t_.size() - 1;
+  }
+
   int VectorSize() { return v_.size(); }
 
   int MatrixSize() { return m_.size(); }
+
+  int TensorSize() { return t_.size(); }
 
   VectorType &V(std::size_t i) {
     assert(i < v_.size() && i >= 0);
@@ -63,6 +73,16 @@ class Lookup {
   const MatrixType &M(std::size_t i) const {
     assert(i < m_.size() && i >= 0);
     return m_[i];
+  }
+
+  TensorType &T(std::size_t i) {
+    assert(i < t_.size() && i >= 0);
+    return t_[i];
+  }
+
+  const TensorType &T(std::size_t i) const {
+    assert(i < t_.size() && i >= 0);
+    return t_[i];
   }
 };
 }  // namespace netket

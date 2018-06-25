@@ -86,13 +86,12 @@ public:
         LogVal(layer_input, output_tensor);
     }
 
-    void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
+    void InitLookup(const TensorType &input_tensor, TensorType &output_tensor, LookupType &lt) override {
 
     }
 
     void
-    UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
-                 const std::vector<double> &newconf, LookupType &lt) override {
+    UpdateLookup(const TensorType &input_tensor, TensorType &output_tensor, LookupType &lt) override {
 
     }
 
@@ -105,6 +104,14 @@ public:
     void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient,
                 Eigen::Map<VectorType> &plat_offsets_grad) override {
 
+    }
+
+    void LogValFromOneHotDiff(const VectorXd &orig_input_vector,
+                              const vector<int> &tochange,
+                              const vector<double> &newconf,
+                              vector<pair<int, int>> &out_to_change,
+                              TensorType &output_tensor, const LookupType &lt) override{
+        assert(false);
     }
 
 };

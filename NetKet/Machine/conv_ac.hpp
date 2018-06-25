@@ -18,11 +18,29 @@
 #include "abstract_machine.hpp"
 #include "conv_ac_layer.hpp"
 #include "to_one_hot_layer.hpp"
+#include <cmath>
 
 namespace netket {
 
 using namespace std;
 using namespace Eigen;
+
+template<typename T>
+T normalized(T number);
+
+template<>
+std::complex<double> normalized(std::complex<double> number){
+    double imag = std::fmod(number.imag(), 2 * M_PI);
+    if (imag < 0){
+        imag = 2 * M_PI + imag;
+    }
+    return std::complex<double>{number.real(), imag};
+}
+
+template< >
+double normalized(double number){
+    return number;
+}
 
 template<typename T>
 class ConvAC : public AbstractMachine<T> {
@@ -39,6 +57,7 @@ public:
     int visible_width_{};
     int visible_height_{};
     int my_mpi_node_{};
+    bool is_first_layer_one_hot_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
     vector<TensorType> values_tensors_;
     vector<TensorType> input_gradient_tensors_;
@@ -100,15 +119,16 @@ public:
 
     T LogVal(const VectorXd &v) override {
         Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorMap <TensorType> input_tensor(input.data(), 1,
-                                            visible_height_,
-                                            visible_width_);
+        TensorMap<TensorType> input_tensor(input.data(), 1,
+                                           visible_height_,
+                                           visible_width_);
         layers_[0]->LogVal(input_tensor, values_tensors_[0]);
         for (int i = 1; i < layers_.size(); ++i) {
             layers_[i]->LogVal(values_tensors_[i - 1], values_tensors_[i]);
         }
-        Eigen::Tensor<T, 0> sum_result(values_tensors_[values_tensors_.size() - 1].sum());
-        return sum_result(0);
+        Eigen::Tensor<T, 0> sum_result(
+                values_tensors_[values_tensors_.size() - 1].sum());
+        return normalized(sum_result(0));
     }
 
     T LogVal(const VectorXd &v, const LookupType &lt) override {
@@ -120,7 +140,10 @@ public:
             lt.AddVector(1);
         }
         lt.V(0)(0) = LogVal(v);
-//        layers_[0]->InitLookup(v, lt);
+        cout << "init value to : " << lt.V(0)(0) <<endl;
+        if (is_first_layer_one_hot_) {
+            layers_[1]->InitLookup(values_tensors_[0], values_tensors_[1], lt);
+        }
     }
 
     void UpdateLookup(const VectorXd &orig_vector, const vector<int> &tochange,
@@ -129,8 +152,12 @@ public:
         for (std::size_t s = 0; s < tochange.size(); s++) {
             new_vector[tochange[s]] = newconf[s];
         }
-        lt.V(0)(0) = LogVal(new_vector);
-//        layers_[0]->UpdateLookup(v, tochange, newconf, lt);
+        lt.V(0)(0) += LogValDiff(orig_vector, tochange, newconf, lt);
+        lt.V(0)(0) = normalized(lt.V(0)(0));
+        if (is_first_layer_one_hot_) {
+            layers_[1]->UpdateLookup(values_tensors_[0], values_tensors_[1],
+                                     lt);
+        }
     }
 
     VectorType
@@ -145,7 +172,7 @@ public:
             for (std::size_t s = 0; s < tochange[k].size(); s++) {
                 new_vector[tochange[k][s]] = newconf[k][s];
             }
-            logvaldiffs(k) = LogVal(new_vector) - orig_log_value;
+            logvaldiffs(k) = normalized(LogVal(new_vector) - orig_log_value);
         }
         return logvaldiffs;
     }
@@ -153,6 +180,20 @@ public:
     T LogValDiff(const VectorXd &v, const vector<int> &tochange,
                  const vector<double> &newconf, const LookupType &lt) override {
         T orig_log_value = lt.V(0)(0);
+        if (is_first_layer_one_hot_) {
+            vector<pair<int, int>> out_to_change{};
+	    layers_[1]->LogValFromOneHotDiff(v, tochange, newconf,
+                                             out_to_change, values_tensors_[1],
+                                             lt);
+            for (int i = 2; i < layers_.size(); ++i) {
+                layers_[i]->LogVal(values_tensors_[i - 1], values_tensors_[i]);
+            }
+            Eigen::Tensor<T, 0> sum_result(
+                    values_tensors_[values_tensors_.size() - 1].sum());
+            return normalized(sum_result(0) - orig_log_value);
+        }
+
+
         VectorXd new_vector(v);
         for (std::size_t s = 0; s < tochange.size(); s++) {
             new_vector[tochange[s]] = newconf[s];
@@ -163,9 +204,9 @@ public:
     VectorType DerLog(const VectorXd &v) override {
         T forward_value = LogVal(v);
         Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorMap <TensorType> input_tensor(input.data(), 1,
-                                            visible_height_,
-                                            visible_width_);
+        TensorMap<TensorType> input_tensor(input.data(), 1,
+                                           visible_height_,
+                                           visible_width_);
         VectorType all_layers__gradient(Npar());
         int params_id = Npar();
         Map<VectorType> params_gradient{NULL, 0};
@@ -184,7 +225,8 @@ public:
                 all_layers__gradient.data(), layer_num_of_params);
         layers_[0]->DerLog(input_tensor, input_gradient_tensors_[0],
                            params_gradient);
-        return all_layers__gradient.unaryExpr(Eigen::internal::scalar_exp_op<std::complex<double>>());
+        return all_layers__gradient.unaryExpr(
+                Eigen::internal::scalar_exp_op<std::complex<double>>());
     }
 
     void to_json(json &j) const override {
@@ -235,19 +277,24 @@ public:
         int input_dimension = 1;
         int input_height = visible_height_;
         int input_width = visible_width_;
+        is_first_layer_one_hot_ = false;
+        int i = 0;
         for (auto const &layer: pars["Machine"]["Layers"]) {
-            if (FieldVal(layer, "Name") == "ConvACLayer"){
+            if (FieldVal(layer, "Name") == "ConvACLayer") {
                 layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
                         new ConvACLayer<T>(layer, input_dimension, input_height,
                                            input_width)));
-            }
-            else if (FieldVal(layer, "Name") == "ToOneHotLayer"){
+            } else if (FieldVal(layer, "Name") == "ToOneHotLayer") {
+                if (i == 0) {
+                    is_first_layer_one_hot_ = true;
+                }
                 layers_.push_back(std::unique_ptr<ToOneHotLayer<T>>(
-                        new ToOneHotLayer<T>(layer, input_height, input_width)));
-            }
-            else{
+                        new ToOneHotLayer<T>(layer, input_height,
+                                             input_width)));
+            } else {
                 if (my_mpi_node_ == 0) {
-                    cerr << "Unknown layers type : " << FieldVal(layer, "Name") << endl;
+                    cerr << "Unknown layers type : " << FieldVal(layer, "Name")
+                         << endl;
                 }
                 std::abort();
             }
@@ -264,6 +311,7 @@ public:
                     TensorType(input_dimension, input_height, input_width));
             input_gradient_tensors_.push_back(
                     TensorType(input_dimension, input_height, input_width));
+            ++i;
         }
         input_gradient_tensors_.back().setZero();
     }

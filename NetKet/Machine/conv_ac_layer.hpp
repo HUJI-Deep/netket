@@ -52,7 +52,7 @@ class ConvACLayer : public AbstractLayer<T> {
     int strides_height_{};
     int padding_width_{};
     int padding_height_{};
-
+    int lookup_index_{-1};
     int my_mpi_node_{};
 
     Tensor<T, 4> offsets_weights_{};
@@ -228,14 +228,20 @@ public:
         }
     }
 
-    void InitLookup(const VectorXd &v, LookupType &lt) override {
-
+    void InitLookup(const TensorType &input_tensor, TensorType &output_tensor,
+                    LookupType &lt) override {
+        if (lookup_index_ < 0 || lt.TensorSize() <= lookup_index_) {
+            lookup_index_ = lt.AddTensor(number_of_output_channels_,
+                                         output_height_,
+                                         output_width_);
+        }
+        lt.T(lookup_index_) = output_tensor;
     }
 
     void
-    UpdateLookup(const VectorXd &v, const std::vector<int> &tochange,
-                 const std::vector<double> &newconf, LookupType &lt) override {
-
+    UpdateLookup(const TensorType &input_tensor, TensorType &output_tensor,
+                 LookupType &lt) override {
+        lt.T(lookup_index_) = output_tensor;
     }
 
 
@@ -315,8 +321,8 @@ public:
                                                         number_of_output_channels_,
                                                         kernel_height_,
                                                         kernel_width_,
-                                                        input_height_,
-                                                        input_width_};
+                                                        output_height_,
+                                                        output_width_};
         Eigen::array<long, 6> next_layer_gradient_bcast_shape{
                 number_of_input_channels_, 1, 1, 1, 1, 1};
         auto next_layer_gradient_patches_broadcasted = next_layer_gradient_patches.reshape(
@@ -392,7 +398,8 @@ public:
                 Eigen::array<long, 4>{2, 3, 0, 1});
     }
 
-    void LogVal(const TensorType &input_tensor, TensorType &output_tensor) {
+    void
+    LogVal(const TensorType &input_tensor, TensorType &output_tensor) override {
         auto element_wise_sum = sum_convolution(input_tensor);
         Eigen::array<long, 1> input_channel_axis{1};
         auto max_per_input_channel = element_wise_sum.real().maximum(
@@ -415,13 +422,48 @@ public:
                                       output_height_, output_width_});
     }
 
+    void LogValFromOneHotDiff(const VectorXd &orig_input_vector,
+                              const vector<int> &tochange,
+                              const vector<double> &newconf,
+                              vector<pair<int, int>> &out_to_change,
+                              TensorType &output_tensor,
+                              const LookupType &lt) override {
+        VectorXd input_vector = orig_input_vector;
+        output_tensor = lt.T(lookup_index_);
+        for (int i = 0; i < tochange.size(); ++i) {
+            if (input_vector(tochange[i]) == newconf[i]){
+                cout << "skip change " << i + 1 << ", value at " << tochange[i] << " remain " << newconf[i]<< endl;
+                continue;
+            }
+            input_vector(tochange[i]) = newconf[i];
+            int w = tochange[i] % input_width_;
+            int h = tochange[i] / input_width_;
+
+            auto diff = (offsets_weights_.chip(0, 3) -
+                         offsets_weights_.chip(1, 3)).reverse(
+                    Eigen::array<bool, 3>{true, true, false});
+            for (int j = 0; (j < kernel_height_) && (h + j < output_height_ ); ++j) {
+                for (int k = 0; (k < kernel_width_) && (w + k < output_width_); ++k) {
+                    auto old_val = output_tensor.chip(h + j, 1).chip(w + k, 1);
+                    if (newconf[i] == 1) {
+                        output_tensor.chip(h + j, 1).chip(w + k, 1) =
+                                old_val + diff.chip(j, 0).chip(k, 0);
+                    } else {
+                        output_tensor.chip(h + j, 1).chip(w + k, 1) =
+                                old_val - diff.chip(j, 0).chip(k, 0);
+                    }
+                }
+            }
+        }
+    }
+
     void LogVal(const TensorType &layer_input, TensorType &output_tensor,
-                const LookupType &lt) {
+                const LookupType &lt) override {
         LogVal(layer_input, output_tensor);
     }
 
 
-    void to_json(json &j) const {
+    void to_json(json &j) const override {
         j["Name"] = "RbmSpin";
         j["number_of_output_channels"] = number_of_output_channels_;
         j["kernel_width"] = kernel_width_;
@@ -429,6 +471,7 @@ public:
         j["strides_width"] = strides_width_;
         j["strides_height"] = strides_height_;
         j["init_in_log_space"] = init_in_log_space_;
+        j["normalize_input_channels"] = normalize_input_channels_;
         VectorType params_vector(Npar());
         GetParameters(params_vector, 0);
         j["offsets_weights"] = params_vector;
