@@ -269,6 +269,16 @@ public:
                 Eigen::Map<VectorType> &flat_offsets_grad,
                 TensorType &input_gradient) {
         DerLog(input_tensor, next_layer_gradient, flat_offsets_grad);
+        if (kernel_width_ == strides_width_ && kernel_height_ == strides_height_
+            && padding_width_ ==0 && padding_height_ == 0 && number_of_output_channels_== 1){
+            Eigen::TensorMap<Eigen::Tensor<T, 3>> offsets_grad(
+                    flat_offsets_grad.data(), kernel_height_,
+                    kernel_width_, number_of_input_channels_);
+            input_gradient = offsets_grad.shuffle(
+                    Eigen::array<long, 3>{2, 0, 1});
+//            todo logsumexp over number_of_output_channels_ will cause thgis to work when number_of_output_channels_ != 1
+            return;
+        }
         T log_zero = -std::numeric_limits<double>::infinity();
         Eigen::array<long, 6> input_shape{number_of_input_channels_, 1, 1, 1,
                                           input_height_, input_width_};
@@ -315,12 +325,13 @@ public:
         auto padded_next_layer_gradient = next_layer_gradient.pad(
                 gradient_paddings, log_zero);
         auto next_layer_gradient_patches = padded_next_layer_gradient.extract_image_patches(
-                kernel_height_, kernel_width_, 1, 1, 1, 1,
+                kernel_height_ / strides_height_, kernel_width_ / strides_width_, 1,
+                1, 1, 1,
                 Eigen::PADDING_VALID).reverse(Eigen::array<long, 4>{1, 2});
         Eigen::array<long, 6> next_layer_gradient_shape{1,
                                                         number_of_output_channels_,
-                                                        kernel_height_,
-                                                        kernel_width_,
+                                                        kernel_height_ / strides_height_,
+                                                        kernel_width_ / strides_width_,
                                                         output_height_,
                                                         output_width_};
         Eigen::array<long, 6> next_layer_gradient_bcast_shape{
