@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#define EIGEN_RUNTIME_NO_MALLOC
+#define EIGEN_NO_MALLOC
+
 #include "netket.hpp"
 #include <mpi.h>
 

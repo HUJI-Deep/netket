@@ -21,7 +21,8 @@ while(True):
     evar=[]
     evarsig=[]
 
-    data=json.load(open('test.log'))
+    # data=json.load(open('test_conv_ac.log'))
+    data=json.load(open('test_conv_ac_3.log'))
     for iteration in data["Output"]:
         iters.append(iteration["Iteration"])
         energy.append(iteration["Energy"]["Mean"])

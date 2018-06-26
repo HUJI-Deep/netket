@@ -58,9 +58,11 @@ public:
     int visible_height_{};
     int my_mpi_node_{};
     bool is_first_layer_one_hot_{};
+    bool fast_lookup_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
     vector<TensorType> values_tensors_;
     vector<TensorType> input_gradient_tensors_;
+    Eigen::Matrix<T, Dynamic, 1> input_buffer_;
 
     const Hilbert &hilbert_;
 
@@ -118,8 +120,8 @@ public:
     }
 
     T LogVal(const VectorXd &v) override {
-        Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorMap<TensorType> input_tensor(input.data(), 1,
+        input_buffer_ = v;
+        TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
                                            visible_height_,
                                            visible_width_);
         layers_[0]->LogVal(input_tensor, values_tensors_[0]);
@@ -140,7 +142,6 @@ public:
             lt.AddVector(1);
         }
         lt.V(0)(0) = LogVal(v);
-        cout << "init value to : " << lt.V(0)(0) <<endl;
         if (is_first_layer_one_hot_) {
             layers_[1]->InitLookup(values_tensors_[0], values_tensors_[1], lt);
         }
@@ -180,7 +181,7 @@ public:
     T LogValDiff(const VectorXd &v, const vector<int> &tochange,
                  const vector<double> &newconf, const LookupType &lt) override {
         T orig_log_value = lt.V(0)(0);
-        if (is_first_layer_one_hot_) {
+        if (is_first_layer_one_hot_ && fast_lookup_) {
             vector<pair<int, int>> out_to_change{};
 	    layers_[1]->LogValFromOneHotDiff(v, tochange, newconf,
                                              out_to_change, values_tensors_[1],
@@ -259,6 +260,12 @@ public:
         } else {
             visible_height_ = hilbert_.Size();
         }
+        if (FieldExists(pars["Machine"], "visible_height")) {
+            fast_lookup_ = pars["Machine"]["fast_lookup"];
+        } else {
+            fast_lookup_ = true;
+        }
+
         number_of_visible_units_ = visible_width_ * visible_height_;
         if (number_of_visible_units_ != hilbert_.Size()) {
             if (my_mpi_node_ == 0) {
@@ -274,6 +281,7 @@ public:
             }
             std::abort();
         }
+        input_buffer_ = Eigen::Matrix<T, Dynamic, 1>(number_of_visible_units_);
         int input_dimension = 1;
         int input_height = visible_height_;
         int input_width = visible_width_;

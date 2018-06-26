@@ -30,6 +30,11 @@ namespace netket {
 using namespace std;
 using namespace Eigen;
 
+template<typename T> struct MyMinusOp {
+    EIGEN_EMPTY_STRUCT_CTOR(MyMinusOp)
+    typedef T result_type;
+    T operator()(const T& a, const double& b) const { return a - T{b}; }
+};
 
 template<typename T>
 class ConvACLayer : public AbstractLayer<T> {
@@ -223,8 +228,8 @@ public:
                     input_channel_axis).log() + max_per_input_channel).eval();
             auto logsumexp_input_channel_broadcasted = logsumexp_input_channel.reshape(
                     logsumexp_shape).broadcast(logsumexp_bcast_shape);
-            offsets_weights_ =
-                    offsets_weights_ - logsumexp_input_channel_broadcasted;
+            cout << logsumexp_input_channel_broadcasted << endl;
+            offsets_weights_ = offsets_weights_.binaryExpr(logsumexp_input_channel_broadcasted, MyMinusOp<T>());
         }
     }
 
