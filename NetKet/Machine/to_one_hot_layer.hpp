@@ -91,7 +91,8 @@ public:
     }
 
     void
-    UpdateLookup(const TensorType &input_tensor, TensorType &output_tensor, LookupType &lt) override {
+    UpdateLookup(const TensorType &input_tensor, const Matrix<bool, Dynamic, Dynamic> &input_changed,
+                 TensorType &output_tensor, Matrix<bool, Dynamic, Dynamic> &out_to_change, LookupType &lt) override {
 
     }
 
@@ -109,8 +110,14 @@ public:
     void LogValFromOneHotDiff(const VectorXd &orig_input_vector,
                               const vector<int> &tochange,
                               const vector<double> &newconf,
-                              vector<pair<int, int>> &out_to_change,
+                              Matrix<bool, Dynamic, Dynamic> &out_to_change,
                               TensorType &output_tensor, const LookupType &lt) override{
+        assert(false);
+    }
+
+    void LogValFromDiff(TensorType &input_tensor, const Matrix<bool, Dynamic, Dynamic> &input_changed,
+                        TensorType &output_tensor, Matrix<bool, Dynamic, Dynamic> &out_to_change,
+                        const LookupType &lt) override{
         assert(false);
     }
 

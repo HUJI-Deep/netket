@@ -43,50 +43,24 @@ std::vector<netket::json> GetMachineInputs() {
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
   input_tests.push_back(pars);
 
-  pars = {{"Graph", {{"Name", "Hypercube"}, {"L", 20}, {"Dimension", 1}, {"Pbc", true}}},
-          {"Machine", {{"Name", "ConvAC"}, {"Alpha", 1.0},{"Layers", {{{"Name", "ToOneHotLayer"}}, {
+  pars = {{"Graph", {{"Name", "Hypercube"}, {"L", 5}, {"Dimension", 1}, {"Pbc", true}}},
+          {"Machine", {{"Name", "ConvAC"}, {"Alpha", 1.0}, {"fast_lookup", true},{"Layers", {{{"Name", "ToOneHotLayer"}}, {
                    {"Name", "ConvACLayer"},
                    {"kernel_width", 1},
                    {"kernel_height", 3},
                    {"padding_width", 0},
                    {"padding_height", 2},
                    {"strides_width", 1},
-                   {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
-                   {"number_of_output_channels", 10}},
-                   {
-                   {"Name", "ConvACLayer"},
-                   {"kernel_width", 1},
-                   {"kernel_height", 20},
-                   {"padding_width", 0},
-                   {"padding_height", 0},
-                   {"strides_width", 1},
-                   {"strides_height", 20},{"init_in_log_space", false}, {"normalize_input_channels", false},
-                   {"number_of_output_channels", 1}
-           }}}}},
-          {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
-  input_tests.push_back(pars);
-
-  pars = {{"Graph", {{"Name", "Hypercube"}, {"L", 20}, {"Dimension", 1}, {"Pbc", true}}},
-          {"Machine", {{"Name", "ConvAC"}, {"Alpha", 1.0}, {"visible_height", 20}, {"Layers", {{
-                 {"Name", "ConvACLayer"},
-                 {"kernel_width", 1},
-                 {"kernel_height", 3},
-                 {"padding_width", 0},
-                 {"padding_height", 2},
-                 {"strides_width", 1},
-                 {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
-                 {"number_of_output_channels", 2}
-         },
-        {
-                {"Name", "ConvACLayer"},
-                {"kernel_width", 1},
-                {"kernel_height", 3},
-                {"padding_width", 0},
-                {"padding_height", 2},
-                {"strides_width", 1},
-                {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
-                {"number_of_output_channels", 2}
-        }}}}},
+                   {"strides_height", 1},{"init_in_log_space", true}, {"normalize_input_channels", false},
+                   {"number_of_output_channels", 2}},
+                   {{"Name", "ConvACLayer"},
+                    {"kernel_width", 1},
+                    {"kernel_height", 3},
+                    {"padding_width", 0},
+                    {"padding_height", 2},
+                    {"strides_width", 1},
+                    {"strides_height", 1},{"init_in_log_space", true}, {"normalize_input_channels", false},
+                    {"number_of_output_channels", 2}},}}}},
           {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
   input_tests.push_back(pars);
 

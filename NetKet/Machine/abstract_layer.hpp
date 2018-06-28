@@ -103,9 +103,13 @@ public:
     virtual void LogValFromOneHotDiff(const Eigen::VectorXd &orig_input_vector,
                                       const std::vector<int> &tochange,
                                       const std::vector<double> &newconf,
-                                      std::vector<std::pair<int, int>> &out_to_change,
+                                      Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change,
                                       TensorType &output_tensor,
                                       const LookupType &lt)= 0;
+
+    virtual void LogValFromDiff(TensorType &input_tensor, const Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &input_changed,
+                                TensorType &output_tensor, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change,
+                                const LookupType &lt) =0;
 
     /**
     Member function initializing the look-up tables.
@@ -136,7 +140,8 @@ public:
     @param lt a reference to the look-up table to be updated.
     */
     virtual void
-    UpdateLookup(const TensorType &input_tensor, TensorType &output_tensor, LookupType &lt)=0;
+    UpdateLookup(const TensorType &input_tensor, const Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &input_changed,
+                 TensorType &output_tensor, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change, LookupType &lt)=0;
 
 
     /**

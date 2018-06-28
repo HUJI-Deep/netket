@@ -57,11 +57,13 @@ class ConvACLayer : public AbstractLayer<T> {
     int strides_height_{};
     int padding_width_{};
     int padding_height_{};
-    int lookup_index_{-1};
+    int tensor_lookup_index_{-1};
+    int large_tensor_lookup_index_{-1};
     int my_mpi_node_{};
 
     Tensor<T, 4> offsets_weights_{};
     Tensor<T, 4> input_patches_{};
+    VectorXd input_vector_;
 
     typedef const Eigen::TensorCwiseBinaryOp<Eigen::internal::scalar_sum_op<T, T>, const Eigen::TensorBroadcastingOp<const std::array<long int, 5>, const Eigen::TensorReshapingOp<const std::array<long int, 5>, Eigen::Tensor<T, 4, 0, long int> > >, const Eigen::TensorBroadcastingOp<const std::array<long int, 5>, const Eigen::TensorReshapingOp<const std::array<long int, 5>, Eigen::TensorShufflingOp<const std::array<long int, 4>, Eigen::Tensor<T, 4, 0, long int> > > > > SumConvolutionResults;
 
@@ -215,10 +217,7 @@ public:
             Eigen::array<long, 4> logsumexp_shape{kernel_height_, kernel_width_,
                                                   number_of_output_channels_,
                                                   1};
-            Eigen::array<long, 4> logsumexp_bcast_shape{kernel_height_,
-                                                        kernel_width_,
-                                                        number_of_output_channels_,
-                                                        number_of_input_channels_};
+            Eigen::array<long, 4> logsumexp_bcast_shape{1, 1, 1, number_of_input_channels_};
             auto max_per_input_channel = offsets_weights_.real().maximum(
                     input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
             auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
@@ -228,25 +227,44 @@ public:
                     input_channel_axis).log() + max_per_input_channel).eval();
             auto logsumexp_input_channel_broadcasted = logsumexp_input_channel.reshape(
                     logsumexp_shape).broadcast(logsumexp_bcast_shape);
-            cout << logsumexp_input_channel_broadcasted << endl;
             offsets_weights_ = offsets_weights_.binaryExpr(logsumexp_input_channel_broadcasted, MyMinusOp<T>());
         }
     }
 
     void InitLookup(const TensorType &input_tensor, TensorType &output_tensor,
                     LookupType &lt) override {
-        if (lookup_index_ < 0 || lt.TensorSize() <= lookup_index_) {
-            lookup_index_ = lt.AddTensor(number_of_output_channels_,
-                                         output_height_,
-                                         output_width_);
+        if (tensor_lookup_index_ < 0 || lt.TensorSize() <= tensor_lookup_index_) {
+            tensor_lookup_index_ = lt.AddTensor(number_of_output_channels_, output_height_, output_width_);
         }
-        lt.T(lookup_index_) = output_tensor;
+        if (large_tensor_lookup_index_< 0 || lt.LargeTensorSize() <= large_tensor_lookup_index_) {
+            large_tensor_lookup_index_ = lt.AddLargeTensor(number_of_output_channels_,
+                                                           kernel_height_, kernel_width_, output_height_, output_width_);
+        }
+        lt.T(tensor_lookup_index_) = output_tensor;
+        auto element_wise_sum = sum_convolution(input_tensor);
+        Eigen::array<long, 1> input_channel_axis{1};
+        auto max_per_input_channel = element_wise_sum.real().maximum(
+                input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
+        Eigen::array<long, 5> logsumexp_shape{number_of_output_channels_, 1,
+                                              input_patches_.dimension(1),
+                                              input_patches_.dimension(2),
+                                              input_patches_.dimension(3)};
+        Eigen::array<long, 5> logsumexp_bcast_shape(
+                {1, number_of_input_channels_, 1, 1, 1});
+        Eigen::array<long, 5> lookup_shape(
+                {number_of_output_channels_, kernel_height_, kernel_width_,
+                 output_height_, output_width_});
+        auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
+                logsumexp_shape).broadcast(logsumexp_bcast_shape);
+        lt.L_T(large_tensor_lookup_index_) = ((element_wise_sum - max_per_input_channel_broadcasted).exp().sum(
+                input_channel_axis).log() + max_per_input_channel).reshape(lookup_shape);
     }
 
     void
-    UpdateLookup(const TensorType &input_tensor, TensorType &output_tensor,
-                 LookupType &lt) override {
-        lt.T(lookup_index_) = output_tensor;
+    UpdateLookup(const TensorType &input_tensor, const Matrix<bool, Dynamic, Dynamic> &input_changed,
+                 TensorType &output_tensor, Matrix<bool, Dynamic, Dynamic> &out_to_change, LookupType &lt) override {
+        lt.T(tensor_lookup_index_) = output_tensor;
+        InitLookup(input_tensor, output_tensor, lt);
     }
 
 
@@ -428,9 +446,9 @@ public:
                 {1, number_of_input_channels_, 1, 1, 1});
         auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
                 logsumexp_shape).broadcast(logsumexp_bcast_shape);
-        auto logsumexp_input_channel = (element_wise_sum -
+        auto logsumexp_input_channel = ((element_wise_sum -
                                         max_per_input_channel_broadcasted).exp().sum(
-                input_channel_axis).log() + max_per_input_channel;
+                input_channel_axis).log() + max_per_input_channel).eval();
         auto sum_over_spatial_kernel = logsumexp_input_channel.sum(
                 Eigen::array<long, 2>{1, 2});
         output_tensor = sum_over_spatial_kernel.reshape(
@@ -441,17 +459,16 @@ public:
     void LogValFromOneHotDiff(const VectorXd &orig_input_vector,
                               const vector<int> &tochange,
                               const vector<double> &newconf,
-                              vector<pair<int, int>> &out_to_change,
+                              Matrix<bool, Dynamic, Dynamic> &out_to_change,
                               TensorType &output_tensor,
                               const LookupType &lt) override {
-        VectorXd input_vector = orig_input_vector;
-        output_tensor = lt.T(lookup_index_);
+        input_vector_ = orig_input_vector;
+        output_tensor = lt.T(tensor_lookup_index_);
         for (int i = 0; i < tochange.size(); ++i) {
-            if (input_vector(tochange[i]) == newconf[i]){
-                cout << "skip change " << i + 1 << ", value at " << tochange[i] << " remain " << newconf[i]<< endl;
+            if (input_vector_(tochange[i]) == newconf[i]){
                 continue;
             }
-            input_vector(tochange[i]) = newconf[i];
+            input_vector_(tochange[i]) = newconf[i];
             int w = tochange[i] % input_width_;
             int h = tochange[i] / input_width_;
 
@@ -460,6 +477,7 @@ public:
                     Eigen::array<bool, 3>{true, true, false});
             for (int j = 0; (j < kernel_height_) && (h + j < output_height_ ); ++j) {
                 for (int k = 0; (k < kernel_width_) && (w + k < output_width_); ++k) {
+                    out_to_change(h +j, w + k) = true;
                     auto old_val = output_tensor.chip(h + j, 1).chip(w + k, 1);
                     if (newconf[i] == 1) {
                         output_tensor.chip(h + j, 1).chip(w + k, 1) =
@@ -473,9 +491,48 @@ public:
         }
     }
 
+    void LogValFromDiff(TensorType &input_tensor, const Matrix<bool, Dynamic, Dynamic> &input_changed,
+                                TensorType &output_tensor, Matrix<bool, Dynamic, Dynamic> &out_to_change,
+                                const LookupType &lt) override{
+        if (strides_height_ != 1 || strides_width_ != 1){
+            out_to_change.setOnes();
+            LogVal(input_tensor, output_tensor);
+            return;
+        }
+        Eigen::array<long, 1> input_channel_axis{1};
+        Eigen::array<long, 2> logsumexp_shape{number_of_output_channels_, 1};
+        Eigen::array<long, 2> logsumexp_bcast_shape({1, number_of_input_channels_});
+        output_tensor = lt.T(tensor_lookup_index_);
+        for (int h = 0; h < input_height_; ++h) {
+            for (int w = 0; w < input_width_; ++w) {
+                if (!input_changed(h, w)){
+                    continue;
+                }
+                for (int j = 0; (j < kernel_height_) && (h + j < output_height_ ); ++j) {
+                    for (int k = 0; (k < kernel_width_) && (w + k < output_width_); ++k) {
+                        auto element_wise_sum = input_tensor.chip(h, 1).chip(w, 1)
+                                                        .reshape(logsumexp_bcast_shape).broadcast(logsumexp_shape)
+                                                + offsets_weights_.chip(kernel_height_ - j - 1,0).chip(kernel_width_- k - 1, 0);
+                        auto max_per_input_channel = element_wise_sum.real().maximum(
+                                input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
+                        auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
+                                logsumexp_shape).broadcast(logsumexp_bcast_shape);
+                        Tensor<T, 1> logsumexp_input_channel = ((element_wise_sum -
+                                                         max_per_input_channel_broadcasted).exp().sum(
+                                input_channel_axis).log() + max_per_input_channel).eval();
+                        out_to_change(h +j, w + k) = true;
+                        for (int c = 0; c < number_of_output_channels_; c++){
+                            output_tensor(c, h + j, w + w) += logsumexp_input_channel(c) - lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, h + j, w + k);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     void LogVal(const TensorType &layer_input, TensorType &output_tensor,
                 const LookupType &lt) override {
-        LogVal(layer_input, output_tensor);
+        output_tensor = lt.T(tensor_lookup_index_);
     }
 
 

@@ -28,10 +28,12 @@ class Lookup {
   using VectorType = Eigen::Matrix<Type, Eigen::Dynamic, 1>;
   using MatrixType = Eigen::Matrix<Type, Eigen::Dynamic, Eigen::Dynamic>;
   using TensorType = Eigen::Tensor<Type, 3>;
-  
+  using LargeTensorType = Eigen::Tensor<Type, 5>;
+
   std::vector<VectorType> v_;
   std::vector<MatrixType> m_;
   std::vector<TensorType> t_;
+  std::vector<LargeTensorType> l_t_;
 
  public:
   int AddVector(int a) {
@@ -49,11 +51,18 @@ class Lookup {
     return t_.size() - 1;
   }
 
+  int AddLargeTensor(int a, int b, int c, int d, int e) {
+    l_t_.push_back(LargeTensorType(a, b, c, d, e));
+    return l_t_.size() - 1;
+  }
+
   int VectorSize() { return v_.size(); }
 
   int MatrixSize() { return m_.size(); }
 
   int TensorSize() { return t_.size(); }
+
+  int LargeTensorSize() { return l_t_.size(); }
 
   VectorType &V(std::size_t i) {
     assert(i < v_.size() && i >= 0);
@@ -83,6 +92,16 @@ class Lookup {
   const TensorType &T(std::size_t i) const {
     assert(i < t_.size() && i >= 0);
     return t_[i];
+  }
+
+    LargeTensorType &L_T(std::size_t i) {
+    assert(i < l_t_.size() && i >= 0);
+    return l_t_[i];
+  }
+
+  const LargeTensorType &L_T(std::size_t i) const {
+    assert(i < l_t_.size() && i >= 0);
+    return l_t_[i];
   }
 };
 }  // namespace netket

@@ -63,6 +63,8 @@ public:
     vector<TensorType> values_tensors_;
     vector<TensorType> input_gradient_tensors_;
     Eigen::Matrix<T, Dynamic, 1> input_buffer_;
+    vector<Matrix<bool, Dynamic, Dynamic>> input_changed_;
+    LookupType lt_;
 
     const Hilbert &hilbert_;
 
@@ -142,22 +144,24 @@ public:
             lt.AddVector(1);
         }
         lt.V(0)(0) = LogVal(v);
-        if (is_first_layer_one_hot_) {
-            layers_[1]->InitLookup(values_tensors_[0], values_tensors_[1], lt);
+        if (!is_first_layer_one_hot_) {
+            input_buffer_ = v;
+            TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
+                                               visible_height_,
+                                               visible_width_);
+            layers_[0]->InitLookup(input_tensor, values_tensors_[0], lt);
+        }
+        for (int i = 1; i < layers_.size(); ++i) {
+            layers_[i]->InitLookup(values_tensors_[i - 1], values_tensors_[i], lt);
         }
     }
 
     void UpdateLookup(const VectorXd &orig_vector, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
-        VectorXd new_vector(orig_vector);
-        for (std::size_t s = 0; s < tochange.size(); s++) {
-            new_vector[tochange[s]] = newconf[s];
-        }
         lt.V(0)(0) += LogValDiff(orig_vector, tochange, newconf, lt);
         lt.V(0)(0) = normalized(lt.V(0)(0));
-        if (is_first_layer_one_hot_) {
-            layers_[1]->UpdateLookup(values_tensors_[0], values_tensors_[1],
-                                     lt);
+        for (int i = 1; i < layers_.size(); ++i) {
+            layers_[i]->UpdateLookup(values_tensors_[i - 1], input_changed_[i], values_tensors_[i], input_changed_[i+1], lt);
         }
     }
 
@@ -165,15 +169,11 @@ public:
     LogValDiff(const VectorXd &orig_vector,
                const vector<vector<int> > &tochange,
                const vector<vector<double>> &newconf) override {
-        T orig_log_value = LogVal(orig_vector);
+        InitLookup(orig_vector, lt_);
         const std::size_t nconn = tochange.size();
         VectorType logvaldiffs = VectorType::Zero(nconn);
         for (std::size_t k = 0; k < nconn; k++) {
-            VectorXd new_vector(orig_vector);
-            for (std::size_t s = 0; s < tochange[k].size(); s++) {
-                new_vector[tochange[k][s]] = newconf[k][s];
-            }
-            logvaldiffs(k) = normalized(LogVal(new_vector) - orig_log_value);
+            logvaldiffs(k) = LogValDiff(orig_vector, tochange[k], newconf[k], lt_);
         }
         return logvaldiffs;
     }
@@ -182,12 +182,14 @@ public:
                  const vector<double> &newconf, const LookupType &lt) override {
         T orig_log_value = lt.V(0)(0);
         if (is_first_layer_one_hot_ && fast_lookup_) {
-            vector<pair<int, int>> out_to_change{};
-	    layers_[1]->LogValFromOneHotDiff(v, tochange, newconf,
-                                             out_to_change, values_tensors_[1],
-                                             lt);
+            input_changed_[1].setZero();
+            layers_[1]->LogValFromOneHotDiff(v, tochange, newconf,
+                                             input_changed_[1], values_tensors_[1],
+                                                 lt);
             for (int i = 2; i < layers_.size(); ++i) {
-                layers_[i]->LogVal(values_tensors_[i - 1], values_tensors_[i]);
+                input_changed_[i].setZero();
+                layers_[i]->LogValFromDiff(values_tensors_[i - 1], input_changed_[i-1],
+                                           values_tensors_[i], input_changed_[i], lt);
             }
             Eigen::Tensor<T, 0> sum_result(
                     values_tensors_[values_tensors_.size() - 1].sum());
@@ -203,7 +205,7 @@ public:
     }
 
     VectorType DerLog(const VectorXd &v) override {
-        T forward_value = LogVal(v);
+        LogVal(v);
         Eigen::Matrix<T, Dynamic, 1> input(v);
         TensorMap<TensorType> input_tensor(input.data(), 1,
                                            visible_height_,
@@ -260,7 +262,7 @@ public:
         } else {
             visible_height_ = hilbert_.Size();
         }
-        if (FieldExists(pars["Machine"], "visible_height")) {
+        if (FieldExists(pars["Machine"], "fast_lookup")) {
             fast_lookup_ = pars["Machine"]["fast_lookup"];
         } else {
             fast_lookup_ = true;
@@ -310,7 +312,7 @@ public:
                 std::cout << "Adding Layer with " << layers_.back()->Npar()
                           << " params" << std::endl;
             }
-
+            input_changed_.push_back(Matrix<bool, Dynamic, Dynamic>(input_height, input_width));
             auto output_dims = layers_.back()->Noutput();
             input_dimension = output_dims[0];
             input_height = output_dims[1];
@@ -322,6 +324,7 @@ public:
             ++i;
         }
         input_gradient_tensors_.back().setZero();
+        input_changed_.push_back(Matrix<bool, Dynamic, Dynamic>(input_height, input_width));
     }
 };
 }
