@@ -512,7 +512,6 @@ public:
                         Matrix<bool, Dynamic, Dynamic> &out_to_change,
                         const LookupType &lt) override {
         if (strides_height_ != 1 || strides_width_ != 1) {
-//        if (true) {
             out_to_change.setOnes();
             LogVal(input_tensor, output_tensor);
             return;
