@@ -67,10 +67,15 @@ class ConvACLayer : public AbstractLayer<T> {
     Tensor<T, 4> offsets_weights_{};
     Tensor<T, 4> input_patches_{};
     Tensor<T, 5> chain_rule_before_sum_{};
+    Tensor<T, 6> input_chain_rule_before_sum_{};
+    Tensor<T, 6> input_element_wise_sum_{};
     Tensor<T, 5> element_wise_sum_{};
     Tensor<T, 4> logsumexp_input_channel_{};
+    Tensor<T, 5> input_logsumexp_input_channel_{};
     Tensor<double , 4> max_per_input_channel_{};
+    Tensor<double , 5> input_max_per_input_channel_{};
     Tensor<double , 4> max_per_spatial_location_{};
+    Tensor<double , 3> input_max_per_spatial_location_{};
     VectorXd input_vector_;
 
     template<typename ParamType>
@@ -107,9 +112,14 @@ class ConvACLayer : public AbstractLayer<T> {
                                         kernel_height_, kernel_width_);
         chain_rule_before_sum_ = Tensor<T, 5>(number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_, output_height_ * output_width_);
         element_wise_sum_ = Tensor<T, 5>(number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_, output_height_ * output_width_);
+        input_element_wise_sum_  = Tensor<T, 6>(number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_, input_height_ , input_width_);
+        input_chain_rule_before_sum_ = Tensor<T, 6>(number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_, input_height_ , input_width_);
         logsumexp_input_channel_ = Tensor<T, 4>(number_of_output_channels_, kernel_height_, kernel_width_, output_height_ * output_width_);
+        input_logsumexp_input_channel_ = Tensor<T, 5>(number_of_output_channels_, kernel_height_, kernel_width_, input_height_, input_width_);
         max_per_input_channel_ = Tensor<double, 4>(number_of_output_channels_, kernel_height_, kernel_width_, output_height_ * output_width_);
+        input_max_per_input_channel_ = Tensor<double, 5>(number_of_output_channels_, kernel_height_, kernel_width_, input_height_ , input_width_);
         max_per_spatial_location_ = Tensor<double, 4>(number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_);
+        input_max_per_spatial_location_ = Tensor<double, 3>(number_of_input_channels_, input_height_, input_width_);
     }
 
     /**
@@ -336,25 +346,25 @@ public:
                 input_bcast_shape);
         auto offsets_broadcasted = offsets_weights_.reshape(
                 offsets_shape).broadcast(offsets_bcast_shape);
-        auto element_wise_sum = input_broadcasted + offsets_broadcasted;
+        input_element_wise_sum_ = input_broadcasted + offsets_broadcasted;
         Eigen::array<long, 1> input_channel_axis{1};
-        auto max_per_input_channel = element_wise_sum.real().maximum(
+        input_max_per_input_channel_ = input_element_wise_sum_.real().maximum(
                 input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
         Eigen::array<long, 6> logsumexp_shape{number_of_output_channels_, 1,
                                               kernel_height_, kernel_width_,
                                               input_height_, input_width_};
         Eigen::array<long, 6> logsumexp_bcast_shape(
                 {1, number_of_input_channels_, 1, 1, 1, 1});
-        auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
+        auto max_per_input_channel_broadcasted = input_max_per_input_channel_.reshape(
                 logsumexp_shape).broadcast(logsumexp_bcast_shape);
-        auto logsumexp_input_channel = (element_wise_sum -
+        input_logsumexp_input_channel_ = (input_element_wise_sum_ -
                                         max_per_input_channel_broadcasted).exp().sum(
-                input_channel_axis).log() + max_per_input_channel;
-        auto logsumexp_input_channel_broadcasted = logsumexp_input_channel.reshape(
+                input_channel_axis).log() + input_max_per_input_channel_;
+        auto logsumexp_input_channel_broadcasted = input_logsumexp_input_channel_.reshape(
                 logsumexp_shape).broadcast(logsumexp_bcast_shape);
 //          todo fill spatial_gradients with log_zero according to strides and padding
         auto spatial_gradients =
-                element_wise_sum - logsumexp_input_channel_broadcasted;
+                input_element_wise_sum_ - logsumexp_input_channel_broadcasted;
         Eigen::array<pair<int, int>, 3> gradient_paddings{make_pair(0, 0),
                                                           make_pair(0,
                                                                     kernel_height_ -
@@ -381,10 +391,10 @@ public:
         auto next_layer_gradient_patches_broadcasted = next_layer_gradient_patches.reshape(
                 next_layer_gradient_shape).broadcast(
                 next_layer_gradient_bcast_shape);
-        auto chain_rule_before_sum =
+        input_chain_rule_before_sum_ =
                 spatial_gradients + next_layer_gradient_patches_broadcasted;
         Eigen::array<long, 3> spatial_location_axis{0, 2, 3};
-        auto max_per_spatial_location = chain_rule_before_sum.real().maximum(
+        input_max_per_spatial_location_ = input_chain_rule_before_sum_.real().maximum(
                 spatial_location_axis).cwiseMax(MINUS_INFINITY).eval();
         Eigen::array<long, 6> chain_rule_logsumexp_shape{
                 1, number_of_input_channels_, 1, 1, input_height_,
@@ -392,12 +402,12 @@ public:
         Eigen::array<long, 6> chain_rule_logsumexp_bcast_shape(
                 {number_of_output_channels_, 1, kernel_height_, kernel_width_,
                  1, 1});
-        auto max_per_spatial_location_broadcasted = max_per_spatial_location.reshape(
+        auto max_per_spatial_location_broadcasted = input_max_per_spatial_location_.reshape(
                 chain_rule_logsumexp_shape).broadcast(
                 chain_rule_logsumexp_bcast_shape);
-        input_gradient = (chain_rule_before_sum -
+        input_gradient = (input_chain_rule_before_sum_ -
                           max_per_spatial_location_broadcasted).exp().sum(
-                spatial_location_axis).log() + max_per_spatial_location;
+                spatial_location_axis).log() + input_max_per_spatial_location_;
     }
 
     void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient,
