@@ -219,9 +219,15 @@ public:
             new(&params_gradient) Map<VectorType>(
                     all_layers__gradient.data() + params_id,
                     layer_num_of_params);
-            layers_[i]->DerLog(values_tensors_[i - 1],
-                               input_gradient_tensors_[i], params_gradient,
-                               input_gradient_tensors_[i - 1]);
+            if (i > 1 || !is_first_layer_one_hot_ ){
+                layers_[i]->DerLog(values_tensors_[i - 1],
+                                   input_gradient_tensors_[i], params_gradient,
+                                   input_gradient_tensors_[i - 1]);
+            }
+            else{
+                layers_[i]->DerLog(values_tensors_[i - 1],
+                                   input_gradient_tensors_[i], params_gradient);
+            }
         }
         int layer_num_of_params = layers_[0]->Npar();
         new(&params_gradient) Map<VectorType>(

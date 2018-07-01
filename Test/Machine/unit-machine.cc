@@ -216,15 +216,15 @@ TEST_CASE("conv_ac layer sanity calculation", "[layer"){
     Eigen::Tensor<complex, 3> next_layer_gradient(1, 2, 2);
     Eigen::Tensor<complex, 3> output_tensor(1, 2, 2);
     Eigen::TensorMap<Eigen::Tensor<complex, 4>> kernel_params_mapping(
-        kernel_params.data(), 2,2, 1,2);
+        kernel_params.data(), 1, 2, 2, 2);
     kernel_params_mapping(0,0,0,0) = std::log(0.5);
-    kernel_params_mapping(0,0,0,1) = std::log(0.5);
-    kernel_params_mapping(0,1,0,0) = std::log(1/3.0);
+    kernel_params_mapping(0,1,0,0) = std::log(0.5);
+    kernel_params_mapping(0,0,0,1) = std::log(1/3.0);
     kernel_params_mapping(0,1,0,1) = std::log(2/3.0);
-    kernel_params_mapping(1,0,0,0) = std::log(0.25);
-    kernel_params_mapping(1,0,0,1) = std::log(0.75);
-    kernel_params_mapping(1,1,0,0) = std::log(0.2);
-    kernel_params_mapping(1,1,0,1) = std::log(0.8);
+    kernel_params_mapping(0,0,1,0) = std::log(0.25);
+    kernel_params_mapping(0,1,1,0) = std::log(0.75);
+    kernel_params_mapping(0,0,1,1) = std::log(0.2);
+    kernel_params_mapping(0,1,1,1) = std::log(0.8);
     layer.SetParameters(kernel_params, 0);
     std::complex<double> log_zero = -std::numeric_limits<double>::infinity();
     input_tensor(0,0,0) = 0;
@@ -240,15 +240,15 @@ TEST_CASE("conv_ac layer sanity calculation", "[layer"){
     expected_output_tensor(0,0,1) = std::log(0.2);
     expected_output_tensor(0,1,1) = std::log(1/15.0);
     Eigen::TensorMap<Eigen::Tensor<complex, 4>> expected_kernel_params_gradient_mapping(
-            expected_kernel_params_gradient.data(), 2,2, 1,2);
+            expected_kernel_params_gradient.data(), 1, 2,2,2);
     expected_kernel_params_gradient_mapping(0,0,0,0) = complex{std::log(5/2.0),0};
-    expected_kernel_params_gradient_mapping(0,0,0,1) = complex{std::log(3/2.0),0};
-    expected_kernel_params_gradient_mapping(0,1,0,0) = complex{std::log(5/3.0),0};
+    expected_kernel_params_gradient_mapping(0,1,0,0) = complex{std::log(3/2.0),0};
+    expected_kernel_params_gradient_mapping(0,0,0,1) = complex{std::log(5/3.0),0};
     expected_kernel_params_gradient_mapping(0,1,0,1) = complex{std::log(7/3.0),0};
-    expected_kernel_params_gradient_mapping(1,0,0,0) = complex{std::log(5/2.0),0};
-    expected_kernel_params_gradient_mapping(1,0,0,1) = complex{std::log(3/2.0),0};
-    expected_kernel_params_gradient_mapping(1,1,0,0) = complex{std::log(2.0),0};
-    expected_kernel_params_gradient_mapping(1,1,0,1) = complex{std::log(2.0),0};
+    expected_kernel_params_gradient_mapping(0,0,1,0) = complex{std::log(5/2.0),0};
+    expected_kernel_params_gradient_mapping(0,1,1,0) = complex{std::log(3/2.0),0};
+    expected_kernel_params_gradient_mapping(0,0,1,1) = complex{std::log(2.0),0};
+    expected_kernel_params_gradient_mapping(0,1,1,1) = complex{std::log(2.0),0};
     layer.LogVal(input_tensor, output_tensor);
     std::cout << "output tensor:"<< std::endl << output_tensor.exp() << std::endl;
     for (int i=0; i < 2; ++i){
