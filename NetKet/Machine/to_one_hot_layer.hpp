@@ -81,6 +81,11 @@ public:
         output_tensor.chip(1, 0) = is_one.select(log_zero_, log_one_);
     }
 
+    void
+    Forward(const TensorType &input_tensor, TensorType &output_tensor) override {
+        LogVal(input_tensor, output_tensor);
+    }
+
     void LogVal(const TensorType &layer_input, TensorType &output_tensor,
                 const LookupType &lt) override {
         LogVal(layer_input, output_tensor);

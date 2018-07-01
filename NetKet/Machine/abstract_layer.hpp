@@ -89,6 +89,16 @@ public:
 
     /**
     Member function computing the logarithm of the wave function for a given visible vector.
+    Given the current set of parameters, this function should compute the value
+    of the logarithm of the wave function from scratch.
+    @param t a constant reference to previous layer output.
+    @return Logarithm of the layer output.
+    */
+    virtual void
+    Forward(const TensorType &input_tensor, TensorType &output_tensor)=0;
+
+    /**
+    Member function computing the logarithm of the wave function for a given visible vector.
     Given the current set of parameters, this function should comput the value
     of the logarithm of the wave function using the information provided in the look-up table,
     to speed up the computation.

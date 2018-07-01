@@ -205,11 +205,14 @@ public:
     }
 
     VectorType DerLog(const VectorXd &v) override {
-        LogVal(v);
-        Eigen::Matrix<T, Dynamic, 1> input(v);
-        TensorMap<TensorType> input_tensor(input.data(), 1,
+        input_buffer_ = v;
+        TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
                                            visible_height_,
                                            visible_width_);
+        layers_[0]->Forward(input_tensor, values_tensors_[0]);
+        for (int i = 1; i < layers_.size(); ++i) {
+            layers_[i]->Forward(values_tensors_[i - 1], values_tensors_[i]);
+        }
         VectorType all_layers__gradient(Npar());
         int params_id = Npar();
         Map<VectorType> params_gradient{NULL, 0};

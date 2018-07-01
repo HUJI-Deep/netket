@@ -249,7 +249,7 @@ TEST_CASE("conv_ac layer sanity calculation", "[layer"){
     expected_kernel_params_gradient_mapping(0,1,1,0) = complex{std::log(3/2.0),0};
     expected_kernel_params_gradient_mapping(0,0,1,1) = complex{std::log(2.0),0};
     expected_kernel_params_gradient_mapping(0,1,1,1) = complex{std::log(2.0),0};
-    layer.LogVal(input_tensor, output_tensor);
+    layer.Forward(input_tensor, output_tensor);
     std::cout << "output tensor:"<< std::endl << output_tensor.exp() << std::endl;
     for (int i=0; i < 2; ++i){
         for (int j=0; j < 2; ++j){
