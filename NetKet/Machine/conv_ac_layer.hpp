@@ -73,8 +73,6 @@ class ConvACLayer : public AbstractLayer<T> {
     Tensor<double , 4> max_per_spatial_location_{};
     VectorXd input_vector_;
 
-    typedef const Eigen::TensorCwiseBinaryOp<Eigen::internal::scalar_sum_op<std::complex<double>, std::complex<double> >, const Eigen::TensorBroadcastingOp<const std::array<long int, 5ul>, const Eigen::TensorReshapingOp<const std::array<long int, 5ul>, Eigen::Tensor<std::complex<double>, 4, 0, long int> > >, const Eigen::TensorBroadcastingOp<const std::array<long int, 5ul>, const Eigen::TensorReshapingOp<const std::array<long int, 5ul>, Eigen::Tensor<std::complex<double>, 4, 0, long int> > > > SumConvolutionResults;
-
     template<typename ParamType>
     void read_layer_param_from_json(const json &pars, const string &param_name,
                                     ParamType &param_value) {
@@ -163,8 +161,17 @@ class ConvACLayer : public AbstractLayer<T> {
                                            strides_width_, true);
     }
 
-    SumConvolutionResults
+    void
     sum_convolution(const TensorType &input_tensor) {
+        if (kernel_width_ == strides_width_ && kernel_height_ == strides_height_
+            && padding_width_ == 0 && padding_height_ == 0 &&
+            number_of_output_channels_ == 1) {
+            Eigen::array<long, 5> shape{1, number_of_input_channels_, kernel_height_, kernel_width_, 1};
+            auto reshaped_offsets = offsets_weights_.reshape(shape);
+            auto reshaped_input = input_tensor.reshape(shape);
+            element_wise_sum_ = reshaped_input + reshaped_offsets;
+            return;
+        }
         Eigen::array<pair<int, int>, 3> paddings{make_pair(0, 0),
                                                  make_pair(padding_height_, 0),
                                                  make_pair(padding_width_, 0)};
@@ -193,7 +200,7 @@ class ConvACLayer : public AbstractLayer<T> {
                 kernel_shape).broadcast(kernel_bcast_shape);
         auto broadcasted_patches = input_patches_.reshape(
                 patches_shape).broadcast(patches_bcast_shape);
-        return broadcasted_patches + broadcasted_kernel;
+        element_wise_sum_ =  broadcasted_patches + broadcasted_kernel;
     }
 
 public:
@@ -259,26 +266,12 @@ public:
                     kernel_height_, kernel_width_, output_height_,
                     output_width_);
         }
-        lt.T(tensor_lookup_index_) = output_tensor;
-        auto element_wise_sum = sum_convolution(input_tensor);
-        Eigen::array<long, 1> input_channel_axis{1};
-        auto max_per_input_channel = element_wise_sum.real().maximum(
-                input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
-        Eigen::array<long, 5> logsumexp_shape{number_of_output_channels_, 1,
-                                              input_patches_.dimension(1),
-                                              input_patches_.dimension(2),
-                                              input_patches_.dimension(3)};
-        Eigen::array<long, 5> logsumexp_bcast_shape(
-                {1, number_of_input_channels_, 1, 1, 1});
         Eigen::array<long, 5> lookup_shape(
                 {number_of_output_channels_, kernel_height_, kernel_width_,
                  output_height_, output_width_});
-        auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
-                logsumexp_shape).broadcast(logsumexp_bcast_shape);
-        lt.L_T(large_tensor_lookup_index_) = ((element_wise_sum -
-                                               max_per_input_channel_broadcasted).exp().sum(
-                input_channel_axis).log() + max_per_input_channel).reshape(
-                lookup_shape);
+        Forward(input_tensor, output_tensor);
+        lt.T(tensor_lookup_index_) = output_tensor;
+        lt.L_T(large_tensor_lookup_index_) = logsumexp_input_channel_.reshape(lookup_shape);
     }
 
     void
@@ -287,7 +280,8 @@ public:
                  TensorType &output_tensor,
                  Matrix<bool, Dynamic, Dynamic> &out_to_change,
                  LookupType &lt) override {
-        lt.T(tensor_lookup_index_) = output_tensor;
+//        lt.T(tensor_lookup_index_) = output_tensor;
+//        todo smarter update ...
         InitLookup(input_tensor, output_tensor, lt);
     }
 
@@ -323,7 +317,7 @@ public:
                     flat_offsets_grad.data(), number_of_input_channels_,
                     kernel_height_, kernel_width_);
             input_gradient = offsets_grad;
-//            todo logsumexp over number_of_output_channels_ will cause thgis to work when number_of_output_channels_ != 1
+//            todo logsumexp over number_of_output_channels_ will cause this to work when number_of_output_channels_ != 1
             return;
         }
         T log_zero = -std::numeric_limits<double>::infinity();
@@ -447,21 +441,22 @@ public:
 
     void
     LogVal(const TensorType &input_tensor, TensorType &output_tensor) override {
-        auto element_wise_sum = sum_convolution(input_tensor);
+//        todo check if calling to Forward is slower and if no replace this with Forward
+        sum_convolution(input_tensor);
         Eigen::array<long, 1> input_channel_axis{1};
-        auto max_per_input_channel = element_wise_sum.real().maximum(
-                input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
+        max_per_input_channel_ = element_wise_sum_.real().maximum(
+                input_channel_axis).cwiseMax(MINUS_INFINITY);
         Eigen::array<long, 5> logsumexp_shape{number_of_output_channels_, 1,
                                               input_patches_.dimension(1),
                                               input_patches_.dimension(2),
                                               input_patches_.dimension(3)};
         Eigen::array<long, 5> logsumexp_bcast_shape(
                 {1, number_of_input_channels_, 1, 1, 1});
-        auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
+        auto max_per_input_channel_broadcasted = max_per_input_channel_.reshape(
                 logsumexp_shape).broadcast(logsumexp_bcast_shape);
-        auto logsumexp_input_channel = ((element_wise_sum -
+        auto logsumexp_input_channel = ((element_wise_sum_ -
                                          max_per_input_channel_broadcasted).exp().sum(
-                input_channel_axis).log() + max_per_input_channel).eval();
+                input_channel_axis).log() + max_per_input_channel_);
         auto sum_over_spatial_kernel = logsumexp_input_channel.sum(
                 Eigen::array<long, 2>{1, 2});
         output_tensor = sum_over_spatial_kernel.reshape(
@@ -471,10 +466,10 @@ public:
 
     void
     Forward(const TensorType &input_tensor, TensorType &output_tensor) override {
-        element_wise_sum_ = sum_convolution(input_tensor);
+        sum_convolution(input_tensor);
         Eigen::array<long, 1> input_channel_axis{1};
         max_per_input_channel_ = element_wise_sum_.real().maximum(
-                input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
+                input_channel_axis).cwiseMax(MINUS_INFINITY);
         Eigen::array<long, 5> logsumexp_shape{number_of_output_channels_, 1,
                                               input_patches_.dimension(1),
                                               input_patches_.dimension(2),
@@ -485,7 +480,7 @@ public:
                 logsumexp_shape).broadcast(logsumexp_bcast_shape);
         logsumexp_input_channel_ = ((element_wise_sum_ -
                                      max_per_input_channel_broadcasted).exp().sum(
-                input_channel_axis).log() + max_per_input_channel_).eval();
+                input_channel_axis).log() + max_per_input_channel_);
         auto sum_over_spatial_kernel = logsumexp_input_channel_.sum(
                 Eigen::array<long, 2>{1, 2});
         output_tensor = sum_over_spatial_kernel.reshape(
