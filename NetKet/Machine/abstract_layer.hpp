@@ -117,7 +117,7 @@ public:
                                       TensorType &output_tensor,
                                       const LookupType &lt)= 0;
 
-    virtual void LogValFromDiff(TensorType &input_tensor, const Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &input_changed,
+    virtual void LogValFromDiff(const TensorType &input_tensor, const Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &input_changed,
                                 TensorType &output_tensor, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change,
                                 const LookupType &lt) =0;
 
@@ -152,6 +152,14 @@ public:
     virtual void
     UpdateLookup(const TensorType &input_tensor, const Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &input_changed,
                  TensorType &output_tensor, Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change, LookupType &lt)=0;
+
+    virtual void
+    UpdateLookupFromOneHotDiff(const Eigen::VectorXd &input_tensor,
+                 const std::vector<int> &tochange,
+                 const std::vector<double> &newconf,
+                 Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change,
+                 TensorType &output_tensor,
+                 LookupType &lt)=0;
 
 
     /**

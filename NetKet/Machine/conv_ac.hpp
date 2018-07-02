@@ -158,16 +158,27 @@ public:
 
     void UpdateLookup(const VectorXd &orig_vector, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
+        T orig_log_value = lt.V(0)(0);
+        if (is_first_layer_one_hot_ && fast_lookup_) {
+            input_changed_[1].setZero();
+            layers_[1]->UpdateLookupFromOneHotDiff(orig_vector, tochange, newconf,
+                                             input_changed_[1], values_tensors_[1],
+                                             lt);
+            for (int i = 2; i < layers_.size(); ++i) {
+                input_changed_[i].setZero();
+                layers_[i]->UpdateLookup(values_tensors_[i - 1], input_changed_[i-1],
+                                           values_tensors_[i], input_changed_[i], lt);
+            }
+            Eigen::Tensor<T, 0> sum_result(
+                    values_tensors_[values_tensors_.size() - 1].sum());
+            lt.V(0)(0) = normalized(sum_result(0));
+            return;
+        }
         VectorXd new_vector(orig_vector);
         for (std::size_t s = 0; s < tochange.size(); s++) {
             new_vector[tochange[s]] = newconf[s];
         }
         InitLookup(new_vector, lt);
-//        lt.V(0)(0) += LogValDiff(orig_vector, tochange, newconf, lt);
-//        lt.V(0)(0) = normalized(lt.V(0)(0));
-//        for (int i = 1; i < layers_.size(); ++i) {
-//            layers_[i]->UpdateLookup(values_tensors_[i - 1], input_changed_[i], values_tensors_[i], input_changed_[i+1], lt);
-//        }
     }
 
     VectorType

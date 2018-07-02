@@ -296,9 +296,19 @@ public:
                  TensorType &output_tensor,
                  Matrix<bool, Dynamic, Dynamic> &out_to_change,
                  LookupType &lt) override {
-//        lt.T(tensor_lookup_index_) = output_tensor;
-//        todo smarter update ...
-        InitLookup(input_tensor, output_tensor, lt);
+        LogValFromDiff(input_tensor, input_changed, output_tensor, out_to_change, lt, true);
+//        InitLookup(input_tensor, output_tensor, lt);
+    }
+
+    void
+    UpdateLookupFromOneHotDiff(const VectorXd &input_tensor,
+                 const vector<int> &tochange,
+                 const vector<double> &newconf,
+                 Matrix<bool, Dynamic, Dynamic> &out_to_change,
+                 TensorType &output_tensor,
+                 LookupType &lt) override {
+        LogValFromOneHotDiff(input_tensor, tochange, newconf, out_to_change, output_tensor,
+                             lt, true);
     }
 
 
@@ -510,6 +520,16 @@ public:
                               Matrix<bool, Dynamic, Dynamic> &out_to_change,
                               TensorType &output_tensor,
                               const LookupType &lt) override {
+        LogValFromOneHotDiff(orig_input_vector, tochange, newconf, out_to_change, output_tensor,
+                             const_cast<LookupType &>(lt), false);
+    }
+
+    void LogValFromOneHotDiff(const VectorXd &orig_input_vector,
+                              const vector<int> &tochange,
+                              const vector<double> &newconf,
+                              Matrix<bool, Dynamic, Dynamic> &out_to_change,
+                              TensorType &output_tensor,
+                              LookupType &lt, bool update_lookup) {
         input_vector_ = orig_input_vector;
         output_tensor = lt.T(tensor_lookup_index_);
         for (int i = 0; i < tochange.size(); ++i) {
@@ -539,16 +559,32 @@ public:
                 }
             }
         }
+        if (update_lookup){
+            lt.T(tensor_lookup_index_) = output_tensor;
+        }
     }
 
-    void LogValFromDiff(TensorType &input_tensor,
+    void LogValFromDiff(const TensorType &input_tensor,
                         const Matrix<bool, Dynamic, Dynamic> &input_changed,
                         TensorType &output_tensor,
                         Matrix<bool, Dynamic, Dynamic> &out_to_change,
                         const LookupType &lt) override {
+        LogValFromDiff(input_tensor, input_changed, output_tensor, out_to_change, const_cast<LookupType &>(lt), false);
+    }
+
+    void LogValFromDiff(const TensorType &input_tensor,
+                        const Matrix<bool, Dynamic, Dynamic> &input_changed,
+                        TensorType &output_tensor,
+                        Matrix<bool, Dynamic, Dynamic> &out_to_change,
+                        LookupType &lt, bool update_lookup) {
         if (strides_height_ != 1 || strides_width_ != 1) {
             out_to_change.setOnes();
-            LogVal(input_tensor, output_tensor);
+            if (update_lookup){
+                InitLookup(input_tensor, output_tensor, lt);
+            }
+            else{
+                LogVal(input_tensor, output_tensor);
+            }
             return;
         }
         Eigen::array<long, 1> input_channel_axis{1};
@@ -580,17 +616,22 @@ public:
                                 logsumexp_bcast_shape);
                         single_logsumexp_input_channel_ = (single_element_wise_sum_ -
                                                            max_per_input_channel_broadcasted).exp().sum(
-                                input_channel_axis).log() +
-                                                          single_max_per_input_channel_;
+                                input_channel_axis).log() + single_max_per_input_channel_;
                         out_to_change(h + j, w + k) = true;
                         for (int c = 0; c < number_of_output_channels_; c++) {
                             output_tensor(c, h + j, w + w) +=
                                     single_logsumexp_input_channel_(c) -
                                     lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, h + j,w + k);
+                            if (update_lookup){
+                                lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, h + j,w + k) = single_logsumexp_input_channel_(c);
+                            }
                         }
                     }
                 }
             }
+        }
+        if (update_lookup){
+            lt.T(tensor_lookup_index_) = output_tensor;
         }
     }
 
