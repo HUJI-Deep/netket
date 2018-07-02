@@ -143,26 +143,31 @@ public:
         if (lt.VectorSize() == 0) {
             lt.AddVector(1);
         }
-        lt.V(0)(0) = LogVal(v);
-        if (!is_first_layer_one_hot_) {
-            input_buffer_ = v;
-            TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
-                                               visible_height_,
-                                               visible_width_);
-            layers_[0]->InitLookup(input_tensor, values_tensors_[0], lt);
-        }
+        input_buffer_ = v;
+        TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
+                                           visible_height_,
+                                           visible_width_);
+        layers_[0]->InitLookup(input_tensor, values_tensors_[0], lt);
         for (int i = 1; i < layers_.size(); ++i) {
             layers_[i]->InitLookup(values_tensors_[i - 1], values_tensors_[i], lt);
         }
+        Eigen::Tensor<T, 0> sum_result(
+                values_tensors_[values_tensors_.size() - 1].sum());
+        lt.V(0)(0) = normalized(sum_result(0));
     }
 
     void UpdateLookup(const VectorXd &orig_vector, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
-        lt.V(0)(0) += LogValDiff(orig_vector, tochange, newconf, lt);
-        lt.V(0)(0) = normalized(lt.V(0)(0));
-        for (int i = 1; i < layers_.size(); ++i) {
-            layers_[i]->UpdateLookup(values_tensors_[i - 1], input_changed_[i], values_tensors_[i], input_changed_[i+1], lt);
+        VectorXd new_vector(orig_vector);
+        for (std::size_t s = 0; s < tochange.size(); s++) {
+            new_vector[tochange[s]] = newconf[s];
         }
+        InitLookup(new_vector, lt);
+//        lt.V(0)(0) += LogValDiff(orig_vector, tochange, newconf, lt);
+//        lt.V(0)(0) = normalized(lt.V(0)(0));
+//        for (int i = 1; i < layers_.size(); ++i) {
+//            layers_[i]->UpdateLookup(values_tensors_[i - 1], input_changed_[i], values_tensors_[i], input_changed_[i+1], lt);
+//        }
     }
 
     VectorType

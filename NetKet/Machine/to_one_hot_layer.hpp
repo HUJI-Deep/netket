@@ -92,13 +92,13 @@ public:
     }
 
     void InitLookup(const TensorType &input_tensor, TensorType &output_tensor, LookupType &lt) override {
-
+        LogVal(input_tensor, output_tensor);
     }
 
     void
     UpdateLookup(const TensorType &input_tensor, const Matrix<bool, Dynamic, Dynamic> &input_changed,
                  TensorType &output_tensor, Matrix<bool, Dynamic, Dynamic> &out_to_change, LookupType &lt) override {
-
+        LogVal(input_tensor, output_tensor);
     }
 
     void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient,
