@@ -92,7 +92,8 @@ class Machine : public AbstractMachine<T> {
     if (FieldOrDefaultVal(pars["Machine"], "InitRandom", true)) {
       double sigma_rand = FieldOrDefaultVal(pars["Machine"], "SigmaRand", 0.1);
       m_->InitRandomPars(1232, sigma_rand);
-
+      InfoMessage() << "# Machine has " << m_->Npar() << " parameters"
+                << std::endl;
       InfoMessage() << "Machine initialized with random parameters"
                     << std::endl;
     }

@@ -61,8 +61,9 @@ class Sampler : public AbstractSampler<WfType> {
   }
 
   void Init(WfType &psi, const json &pars) {
+    int seed = FieldOrDefaultVal(pars["Sampler"], "Seed", 0);
     if (pars["Sampler"]["Name"] == "MetropolisLocal") {
-      s_ = Ptype(new MetropolisLocal<WfType>(psi));
+      s_ = Ptype(new MetropolisLocal<WfType>(psi, seed));
     } else if (pars["Sampler"]["Name"] == "MetropolisLocalPt") {
       s_ = Ptype(new MetropolisLocalPt<WfType>(psi, pars));
     }
