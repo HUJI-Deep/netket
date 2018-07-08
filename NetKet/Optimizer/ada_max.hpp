@@ -15,17 +15,17 @@
 #ifndef NETKET_ADAMAX_HPP
 #define NETKET_ADAMAX_HPP
 
+#include "abstract_optimizer.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <cassert>
 #include <cmath>
 #include <complex>
 #include <iostream>
-#include "abstract_stepper.hpp"
 
 namespace netket {
 
-class AdaMax : public AbstractStepper {
+class AdaMax : public AbstractOptimizer {
   int npar_;
 
   double alpha_;
@@ -45,40 +45,28 @@ class AdaMax : public AbstractStepper {
 
   double epscut_;
 
-  int mynode_;
-
   const std::complex<double> I_;
 
- public:
+public:
   // Json constructor
   explicit AdaMax(const json &pars)
-      : alpha_(FieldOrDefaultVal(pars["Learning"], "Alpha", 0.001)),
-        beta1_(FieldOrDefaultVal(pars["Learning"], "Beta1", 0.9)),
-        beta2_(FieldOrDefaultVal(pars["Learning"], "Beta2", 0.999)),
-        first_niter_decay_(FieldOrDefaultVal(pars["Learning"], "FirstDecayAlphaAt", -1)),
-        second_niter_decay_(FieldOrDefaultVal(pars["Learning"], "SecondDecayAlphaAt", -1)),
-        first_decay_alpha_(FieldOrDefaultVal(pars["Learning"], "FirstDecayAlpha", 0.001)),
-        second_decay_alpha_(FieldOrDefaultVal(pars["Learning"], "SecondDecayAlpha", 0.001)),
-        epscut_(FieldOrDefaultVal(pars["Learning"], "Epscut", 1.0e-7)),
-        I_(0, 1) {
+      : I_(0, 1) {
+  explicit AdaMax(const json &pars) : I_(0, 1) {
     npar_ = -1;
     niter_ = 0;
     niter_reset_ = -1;
-      assert(second_niter_decay_ >= first_niter_decay_);
 
+    from_json(pars);
     PrintParameters();
   }
 
   void PrintParameters() {
-    MPI_Comm_rank(MPI_COMM_WORLD, &mynode_);
-    if (mynode_ == 0) {
-      std::cout << "# Adamax stepper initialized with these parameters : "
-                << std::endl;
-      std::cout << "# Alpha = " << alpha_ << std::endl;
-      std::cout << "# Beta1 = " << beta1_ << std::endl;
-      std::cout << "# Beta2 = " << beta2_ << std::endl;
-      std::cout << "# Epscut = " << epscut_ << std::endl;
-    }
+    InfoMessage() << "Adamax optimizer initialized with these parameters :"
+                  << std::endl;
+    InfoMessage() << "Alpha = " << alpha_ << std::endl;
+    InfoMessage() << "Beta1 = " << beta1_ << std::endl;
+    InfoMessage() << "Beta2 = " << beta2_ << std::endl;
+    InfoMessage() << "Epscut = " << epscut_ << std::endl;
   }
 
   void Init(const Eigen::VectorXd &pars) override {
@@ -101,14 +89,11 @@ class AdaMax : public AbstractStepper {
     assert(npar_ > 0);
 
       if (first_niter_decay_ > 0 && niter_ >= first_niter_decay_){
-//          Reset();
           alpha_ = first_decay_alpha_;
           first_niter_decay_ = second_niter_decay_;
           first_decay_alpha_ = second_decay_alpha_;
-          if (mynode_ == 0) {
-              std::cout << "Decrease Learning rate to : " << alpha_
-                        << std::endl;
-          }
+          InfoMessage() << "Decrease Learning rate to : " << alpha_
+                           << std::endl;
       }
 
     mt_ = beta1_ * mt_ + (1. - beta1_) * grad;
@@ -122,7 +107,6 @@ class AdaMax : public AbstractStepper {
         niter_ = 1;
       }
     }
-
 
     double eta = alpha_ / (1. - std::pow(beta1_, niter_));
     for (int i = 0; i < npar_; i++) {
@@ -138,14 +122,11 @@ class AdaMax : public AbstractStepper {
     assert(npar_ == 2 * pars.size());
 
       if (first_niter_decay_ > 0 && niter_ >= first_niter_decay_){
-  //        Reset();
           alpha_ = first_decay_alpha_;
           first_niter_decay_ = second_niter_decay_;
           first_decay_alpha_ = second_decay_alpha_;
-          if (mynode_ == 0) {
-              std::cout << "Decrease Learning rate to : " << alpha_
+          InfoMessage() << "Decrease Learning rate to : " << alpha_
                         << std::endl;
-          }
       }
 
     for (int i = 0; i < pars.size(); i++) {
@@ -167,7 +148,6 @@ class AdaMax : public AbstractStepper {
       }
     }
 
-
     double eta = alpha_ / (1. - std::pow(beta1_, niter_));
     for (int i = 0; i < pars.size(); i++) {
       pars(i) -= eta * mt_(2 * i) / ut_(2 * i);
@@ -183,6 +163,23 @@ class AdaMax : public AbstractStepper {
   }
 
   void SetResetEvery(double niter_reset) { niter_reset_ = niter_reset; }
+
+  void from_json(const json &pars) {
+    // DEPRECATED (to remove for v2.0.0)
+    std::string section = "Optimizer";
+    if (!FieldExists(pars, section)) {
+      section = "Learning";
+    }
+
+    alpha_ = FieldOrDefaultVal(pars[section], "Alpha", 0.001);
+    beta1_ = FieldOrDefaultVal(pars[section], "Beta1", 0.9);
+    beta2_ = FieldOrDefaultVal(pars[section], "Beta2", 0.999);
+    epscut_ = FieldOrDefaultVal(pars[section], "Epscut", 1.0e-7);
+    first_niter_decay_(FieldOrDefaultVal(pars[section], "FirstDecayAlphaAt", -1)),
+    second_niter_decay_(FieldOrDefaultVal(pars[section], "SecondDecayAlphaAt", -1)),
+    first_decay_alpha_(FieldOrDefaultVal(pars[section], "FirstDecayAlpha", 0.001)),
+    second_decay_alpha_(FieldOrDefaultVal(pars[section], "SecondDecayAlpha", 0.001)),
+  }
 };
 
 }  // namespace netket

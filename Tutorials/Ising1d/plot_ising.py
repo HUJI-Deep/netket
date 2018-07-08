@@ -22,7 +22,7 @@ while(True):
     evarsig=[]
 
     # data=json.load(open('test_conv_ac.log'))
-    data=json.load(open('test_conv_ac_3.log'))
+    data=json.load(open('test.log'))
     for iteration in data["Output"]:
         iters.append(iteration["Iteration"])
         energy.append(iteration["Energy"]["Mean"])
@@ -41,7 +41,8 @@ while(True):
 
         plt.xlim([nres-cut,nres])
         maxval=np.max(energy[-cut:-1])
-        plt.ylim([exact-(np.abs(exact)*0.01),maxval+np.abs(maxval)*0.01])
+        plt.ylim([exact-(np.abs(exact)*0.01),-25.4])
+        # plt.ylim([exact-(np.abs(exact)*0.01),maxval+np.abs(maxval)*0.01])
         error=(z[0]-exact)/-exact
         plt.gca().text(0.95, 0.8, 'Relative Error : '+"{:.2e}".format(error),
         verticalalignment='bottom', horizontalalignment='right',

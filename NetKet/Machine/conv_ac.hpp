@@ -123,12 +123,11 @@ public:
 
     T LogVal(const VectorXd &v) override {
         input_buffer_ = v;
-        TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
-                                           visible_height_,
-                                           visible_width_);
-        layers_[0]->LogVal(input_tensor, values_tensors_[0]);
-        for (int i = 1; i < layers_.size(); ++i) {
-            layers_[i]->LogVal(values_tensors_[i - 1], values_tensors_[i]);
+        TensorMap<Tensor<T, 2, RowMajor>> input_tensor_swaped(input_buffer_.data(), visible_height_,
+                                                              visible_width_);
+        values_tensors_[0] = input_tensor_swaped.swap_layout().reshape(Eigen::array<long, 3>{1, visible_height_, visible_width_});
+        for (int i = 0; i < layers_.size(); ++i) {
+            layers_[i]->LogVal(values_tensors_[i], values_tensors_[i+1]);
         }
         Eigen::Tensor<T, 0> sum_result(
                 values_tensors_[values_tensors_.size() - 1].sum());
@@ -144,12 +143,11 @@ public:
             lt.AddVector(1);
         }
         input_buffer_ = v;
-        TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
-                                           visible_height_,
-                                           visible_width_);
-        layers_[0]->InitLookup(input_tensor, values_tensors_[0], lt);
-        for (int i = 1; i < layers_.size(); ++i) {
-            layers_[i]->InitLookup(values_tensors_[i - 1], values_tensors_[i], lt);
+        TensorMap<Tensor<T, 2, RowMajor>> input_tensor_swaped(input_buffer_.data(), visible_height_,
+                                                              visible_width_);
+        values_tensors_[0] = input_tensor_swaped.swap_layout().reshape(Eigen::array<long, 3>{1, visible_height_, visible_width_});
+        for (int i = 0; i < layers_.size(); ++i) {
+            layers_[i]->InitLookup(values_tensors_[i], values_tensors_[i+1], lt);
         }
         Eigen::Tensor<T, 0> sum_result(
                 values_tensors_[values_tensors_.size() - 1].sum());
@@ -162,12 +160,12 @@ public:
         if (is_first_layer_one_hot_ && fast_lookup_) {
             input_changed_[1].setZero();
             layers_[1]->UpdateLookupFromOneHotDiff(orig_vector, tochange, newconf,
-                                             input_changed_[1], values_tensors_[1],
+                                             input_changed_[1], values_tensors_[2],
                                              lt);
             for (int i = 2; i < layers_.size(); ++i) {
                 input_changed_[i].setZero();
-                layers_[i]->UpdateLookup(values_tensors_[i - 1], input_changed_[i-1],
-                                           values_tensors_[i], input_changed_[i], lt);
+                layers_[i]->UpdateLookup(values_tensors_[i], input_changed_[i-1],
+                                           values_tensors_[i + 1], input_changed_[i], lt);
             }
             Eigen::Tensor<T, 0> sum_result(
                     values_tensors_[values_tensors_.size() - 1].sum());
@@ -200,12 +198,12 @@ public:
         if (is_first_layer_one_hot_ && fast_lookup_) {
             input_changed_[1].setZero();
             layers_[1]->LogValFromOneHotDiff(v, tochange, newconf,
-                                             input_changed_[1], values_tensors_[1],
+                                             input_changed_[1], values_tensors_[2],
                                                  lt);
             for (int i = 2; i < layers_.size(); ++i) {
                 input_changed_[i].setZero();
-                layers_[i]->LogValFromDiff(values_tensors_[i - 1], input_changed_[i-1],
-                                           values_tensors_[i], input_changed_[i], lt);
+                layers_[i]->LogValFromDiff(values_tensors_[i], input_changed_[i-1],
+                                           values_tensors_[i+1], input_changed_[i], lt);
             }
             Eigen::Tensor<T, 0> sum_result(
                     values_tensors_[values_tensors_.size() - 1].sum());
@@ -222,12 +220,11 @@ public:
 
     VectorType DerLog(const VectorXd &v) override {
         input_buffer_ = v;
-        TensorMap<TensorType> input_tensor(input_buffer_.data(), 1,
-                                           visible_height_,
-                                           visible_width_);
-        layers_[0]->Forward(input_tensor, values_tensors_[0]);
-        for (int i = 1; i < layers_.size(); ++i) {
-            layers_[i]->Forward(values_tensors_[i - 1], values_tensors_[i]);
+        TensorMap<Tensor<T, 2, RowMajor>> input_tensor_swaped(input_buffer_.data(), visible_height_,
+                                                             visible_width_);
+        values_tensors_[0] = input_tensor_swaped.swap_layout().reshape(Eigen::array<long, 3>{1, visible_height_, visible_width_});
+        for (int i = 0; i < layers_.size(); ++i) {
+            layers_[i]->Forward(values_tensors_[i], values_tensors_[i+1]);
         }
         VectorType all_layers__gradient(Npar());
         int params_id = Npar();
@@ -239,19 +236,19 @@ public:
                     all_layers__gradient.data() + params_id,
                     layer_num_of_params);
             if (i > 1 || !is_first_layer_one_hot_ ){
-                layers_[i]->DerLog(values_tensors_[i - 1],
+                layers_[i]->DerLog(values_tensors_[i],
                                    input_gradient_tensors_[i], params_gradient,
                                    input_gradient_tensors_[i - 1]);
             }
             else{
-                layers_[i]->DerLog(values_tensors_[i - 1],
+                layers_[i]->DerLog(values_tensors_[i],
                                    input_gradient_tensors_[i], params_gradient);
             }
         }
         int layer_num_of_params = layers_[0]->Npar();
         new(&params_gradient) Map<VectorType>(
                 all_layers__gradient.data(), layer_num_of_params);
-        layers_[0]->DerLog(input_tensor, input_gradient_tensors_[0],
+        layers_[0]->DerLog(values_tensors_[0], input_gradient_tensors_[0],
                            params_gradient);
         return all_layers__gradient.unaryExpr(
                 Eigen::internal::scalar_exp_op<std::complex<double>>());
@@ -312,6 +309,8 @@ public:
         int input_dimension = 1;
         int input_height = visible_height_;
         int input_width = visible_width_;
+        values_tensors_.push_back(
+                TensorType(input_dimension, input_height, input_width));
         is_first_layer_one_hot_ = false;
         int i = 0;
         for (auto const &layer: pars["Machine"]["Layers"]) {

@@ -55,7 +55,9 @@ class ConvACLayer : public AbstractLayer<T> {
     int output_width_{};
     int number_of_output_channels_{};
     int kernel_width_{};
+    int half_kernel_width_{};
     int kernel_height_{};
+    int half_kernel_height_{};
     int strides_width_{};
     int strides_height_{};
     int padding_width_{};
@@ -73,6 +75,7 @@ class ConvACLayer : public AbstractLayer<T> {
     Tensor<T, 2> single_element_wise_sum_{};
     Tensor<T, 1> single_logsumexp_input_channel_{};
     Tensor<double , 1> single_max_per_input_channel_{};
+    Tensor<double , 3> max_per_output_channel_{};
     Tensor<T, 4> logsumexp_input_channel_{};
     Tensor<double , 4> max_per_input_channel_{};
     Tensor<double , 4> max_per_spatial_location_{};
@@ -126,6 +129,7 @@ class ConvACLayer : public AbstractLayer<T> {
         max_per_spatial_location_ = Tensor<double, 4>(number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_);
         input_max_per_spatial_location_ = Tensor<double, 3>(number_of_input_channels_, input_height_, input_width_);
         single_max_per_input_channel_ = Tensor<double, 1>(number_of_output_channels_);
+        max_per_output_channel_ = Tensor<double, 3>(number_of_input_channels_, kernel_height_, kernel_width_);
     }
 
     /**
@@ -159,7 +163,9 @@ class ConvACLayer : public AbstractLayer<T> {
         read_layer_param_from_json(pars, "number_of_output_channels",
                                    number_of_output_channels_);
         read_layer_param_from_json(pars, "kernel_width", kernel_width_);
+        half_kernel_width_ = int(floor(kernel_width_ / 2));
         read_layer_param_from_json(pars, "kernel_height", kernel_height_);
+        half_kernel_height_ = int(floor(kernel_height_ / 2));
         read_layer_param_from_json(pars, "strides_width", strides_width_);
         read_layer_param_from_json(pars, "strides_height", strides_height_);
         read_layer_param_from_json(pars, "padding_width", padding_width_);
@@ -169,10 +175,10 @@ class ConvACLayer : public AbstractLayer<T> {
         read_layer_param_from_json(pars, "normalize_input_channels",
                                    normalize_input_channels_);
         output_height_ = dimension_out_size(input_height_,
-                                            padding_height_, 0,
+                                            padding_height_, padding_height_,
                                             kernel_height_,
                                             strides_height_, true);
-        output_width_ = dimension_out_size(input_width_, padding_width_, 0,
+        output_width_ = dimension_out_size(input_width_, padding_width_, padding_width_,
                                            kernel_width_,
                                            strides_width_, true);
     }
@@ -180,17 +186,18 @@ class ConvACLayer : public AbstractLayer<T> {
     void
     sum_convolution(const TensorType &input_tensor) {
         if (kernel_width_ == strides_width_ && kernel_height_ == strides_height_
-            && padding_width_ == 0 && padding_height_ == 0 &&
-            number_of_output_channels_ == 1) {
-            Eigen::array<long, 5> shape{1, number_of_input_channels_, kernel_height_, kernel_width_, 1};
-            auto reshaped_offsets = offsets_weights_.reshape(shape);
-            auto reshaped_input = input_tensor.reshape(shape);
+            && padding_width_ == 0 && padding_height_ == 0 && kernel_width_ == input_width_ && kernel_height_ == input_height_) {
+            Eigen::array<long, 5> input_shape{1, number_of_input_channels_, kernel_height_, kernel_width_, 1};
+            Eigen::array<long, 5> input_bcast_shape{number_of_output_channels_, 1, 1, 1, 1};
+            Eigen::array<long, 5> offsets_shape{number_of_output_channels_, number_of_input_channels_, kernel_height_, kernel_width_, 1};
+            auto reshaped_offsets = offsets_weights_.reshape(offsets_shape);
+            auto reshaped_input = input_tensor.reshape(input_shape).broadcast(input_bcast_shape);
             element_wise_sum_ = reshaped_input + reshaped_offsets;
             return;
         }
         Eigen::array<pair<int, int>, 3> paddings{make_pair(0, 0),
-                                                 make_pair(padding_height_, 0),
-                                                 make_pair(padding_width_, 0)};
+                                                 make_pair(padding_height_, padding_height_),
+                                                 make_pair(padding_width_, padding_width_)};
         auto padded_input = input_tensor.pad(paddings, 0);
         input_patches_ = padded_input.extract_image_patches(kernel_height_,
                                                             kernel_width_,
@@ -297,7 +304,6 @@ public:
                  Matrix<bool, Dynamic, Dynamic> &out_to_change,
                  LookupType &lt) override {
         LogValFromDiff(input_tensor, input_changed, output_tensor, out_to_change, lt, true);
-//        InitLookup(input_tensor, output_tensor, lt);
     }
 
     void
@@ -337,13 +343,30 @@ public:
                 TensorType &input_gradient) {
         DerLog(input_tensor, next_layer_gradient, flat_offsets_grad);
         if (kernel_width_ == strides_width_ && kernel_height_ == strides_height_
-            && padding_width_ == 0 && padding_height_ == 0 &&
-            number_of_output_channels_ == 1) {
-            Eigen::TensorMap<Eigen::Tensor<T, 3>> offsets_grad(
-                    flat_offsets_grad.data(), number_of_input_channels_,
-                    kernel_height_, kernel_width_);
-            input_gradient = offsets_grad;
-//            todo logsumexp over number_of_output_channels_ will cause this to work when number_of_output_channels_ != 1
+            && padding_width_ == 0 && padding_height_ == 0 ) {
+            if (number_of_output_channels_ == 1){
+                Eigen::TensorMap<Eigen::Tensor<T, 3>> offsets_grad(
+                        flat_offsets_grad.data(), number_of_input_channels_,
+                        kernel_height_, kernel_width_);
+                input_gradient = offsets_grad;
+            }
+            else{
+                Eigen::TensorMap<Eigen::Tensor<T, 4>> offsets_grad(
+                        flat_offsets_grad.data(), number_of_output_channels_, number_of_input_channels_,
+                        kernel_height_, kernel_width_);
+                Eigen::array<long, 1> output_channel_axis({0});
+                Eigen::array<long, 4> logsumexp_shape{1, number_of_input_channels_,
+                                                      kernel_height_,
+                                                      kernel_width_};
+                Eigen::array<long, 4> logsumexp_bcast_shape{number_of_output_channels_, 1, 1, 1};
+                max_per_output_channel_ = offsets_grad.real().maximum(
+                        output_channel_axis).cwiseMax(MINUS_INFINITY);
+                auto max_per_output_channel_broadcasted = max_per_output_channel_.reshape(
+                        logsumexp_shape).broadcast(logsumexp_bcast_shape);
+                input_gradient = ((offsets_grad -
+                        max_per_output_channel_broadcasted).exp().sum(
+                        output_channel_axis).log() + max_per_output_channel_);
+            }
             return;
         }
         T log_zero = -std::numeric_limits<double>::infinity();
@@ -382,12 +405,8 @@ public:
         auto spatial_gradients =
                 input_element_wise_sum_ - logsumexp_input_channel_broadcasted;
         Eigen::array<pair<int, int>, 3> gradient_paddings{make_pair(0, 0),
-                                                          make_pair(0,
-                                                                    kernel_height_ -
-                                                                    strides_height_),
-                                                          make_pair(0,
-                                                                    kernel_width_ -
-                                                                    strides_width_)};
+                                                          make_pair(padding_height_,padding_height_),
+                                                          make_pair(padding_width_,padding_width_)};
         auto padded_next_layer_gradient = next_layer_gradient.pad(
                 gradient_paddings, log_zero);
         auto next_layer_gradient_patches = padded_next_layer_gradient.extract_image_patches(
@@ -537,23 +556,41 @@ public:
                 continue;
             }
             input_vector_(tochange[i]) = newconf[i];
-            int w = tochange[i] % input_width_;
-            int h = tochange[i] / input_width_;
+            int h = tochange[i] % input_height_;
+            int w = tochange[i] / input_height_;
 
             auto diff = (offsets_weights_.chip(0, 1) -
                          offsets_weights_.chip(1, 1)).reverse(
                     Eigen::array<bool, 3>{false, true, true});
+            if (output_height_ == 1 && output_width_ == 1){
+                out_to_change(0, 0) = true;
+                auto old_val = output_tensor.chip(0, 1).chip(0, 1);
+                if (newconf[i] == 1) {
+                    output_tensor.chip(0, 1).chip(0, 1) = old_val + diff.chip(kernel_height_ - h - 1, 1).chip(kernel_width_ - w - 1, 1);
+                } else {
+                    output_tensor.chip(0, 1).chip(0, 1) = old_val - diff.chip(kernel_height_ - h - 1, 1).chip(kernel_width_ - w - 1, 1);
+                }
+                continue;
+            }
             for (int j = 0;
-                 (j < kernel_height_) && (h + j < output_height_); ++j) {
+                 (j < kernel_height_) && (h + j < output_height_ + half_kernel_height_); ++j) {
+                int id_h = h + j - half_kernel_height_;
+                if (id_h < 0){
+                    continue;
+                }
                 for (int k = 0;
-                     (k < kernel_width_) && (w + k < output_width_); ++k) {
-                    out_to_change(h + j, w + k) = true;
-                    auto old_val = output_tensor.chip(h + j, 1).chip(w + k, 1);
+                     (k < kernel_width_) && (w + k < output_width_ + half_kernel_width_); ++k) {
+                    int id_w = w + k - half_kernel_width_;
+                    if (id_w < 0){
+                        continue;
+                    }
+                    out_to_change(id_h, id_w) = true;
+                    auto old_val = output_tensor.chip(id_h, 1).chip(id_w, 1);
                     if (newconf[i] == 1) {
-                        output_tensor.chip(h + j, 1).chip(w + k, 1) =
+                        output_tensor.chip(id_h, 1).chip(id_w, 1) =
                                 old_val + diff.chip(j, 1).chip(k, 1);
                     } else {
-                        output_tensor.chip(h + j, 1).chip(w + k, 1) =
+                        output_tensor.chip(id_h, 1).chip(id_w, 1) =
                                 old_val - diff.chip(j, 1).chip(k, 1);
                     }
                 }
@@ -577,7 +614,7 @@ public:
                         TensorType &output_tensor,
                         Matrix<bool, Dynamic, Dynamic> &out_to_change,
                         LookupType &lt, bool update_lookup) {
-        if (strides_height_ != 1 || strides_width_ != 1) {
+        if (output_height_ != input_height_|| output_width_ != input_width_ ) {
             out_to_change.setOnes();
             if (update_lookup){
                 InitLookup(input_tensor, output_tensor, lt);
@@ -592,15 +629,26 @@ public:
         Eigen::array<long, 2> logsumexp_bcast_shape(
                 {1, number_of_input_channels_});
         output_tensor = lt.T(tensor_lookup_index_);
+//        cout << "output_tensor" << endl << output_tensor << endl;
         for (int h = 0; h < input_height_; ++h) {
             for (int w = 0; w < input_width_; ++w) {
                 if (!input_changed(h, w)) {
                     continue;
                 }
+  //              cout << h << "," << w << " changed" << endl;
                 for (int j = 0;
-                     (j < kernel_height_) && (h + j < output_height_); ++j) {
+                     (j < kernel_height_) && (h + j < output_height_ + half_kernel_height_); ++j) {
+                    int id_h = h + j - half_kernel_height_;
+                    if (id_h < 0){
+                        continue;
+                    }
                     for (int k = 0;
-                         (k < kernel_width_) && (w + k < output_width_); ++k) {
+                         (k < kernel_width_) && (w + k < output_width_ + half_kernel_width_); ++k) {
+                        int id_w = w + k - half_kernel_width_;
+                        if (id_w < 0){
+                            continue;
+                        }
+    //                    cout << "start update " << id_h << "," << id_w <<  endl;
                         single_element_wise_sum_ =
                                 input_tensor.chip(h, 1).chip(w, 1)
                                         .reshape(
@@ -617,13 +665,13 @@ public:
                         single_logsumexp_input_channel_ = (single_element_wise_sum_ -
                                                            max_per_input_channel_broadcasted).exp().sum(
                                 input_channel_axis).log() + single_max_per_input_channel_;
-                        out_to_change(h + j, w + k) = true;
+                        out_to_change(id_h, id_w) = true;
                         for (int c = 0; c < number_of_output_channels_; c++) {
-                            output_tensor(c, h + j, w + w) +=
+                            output_tensor(c, id_h, id_w) +=
                                     single_logsumexp_input_channel_(c) -
-                                    lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, h + j,w + k);
+                                    lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, id_h, id_w);
                             if (update_lookup){
-                                lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, h + j,w + k) = single_logsumexp_input_channel_(c);
+                                lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, id_h, id_w) = single_logsumexp_input_channel_(c);
                             }
                         }
                     }
