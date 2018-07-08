@@ -29,6 +29,9 @@ class AdaMax : public AbstractStepper {
   int npar_;
 
   double alpha_;
+  double first_decay_alpha_;
+  double second_decay_alpha_;
+  double decay_factor_;
   double beta1_;
   double beta2_;
 
@@ -36,6 +39,8 @@ class AdaMax : public AbstractStepper {
   Eigen::VectorXd mt_;
 
   double niter_;
+  double first_niter_decay_;
+  double second_niter_decay_;
   double niter_reset_;
 
   double epscut_;
@@ -50,11 +55,16 @@ class AdaMax : public AbstractStepper {
       : alpha_(FieldOrDefaultVal(pars["Learning"], "Alpha", 0.001)),
         beta1_(FieldOrDefaultVal(pars["Learning"], "Beta1", 0.9)),
         beta2_(FieldOrDefaultVal(pars["Learning"], "Beta2", 0.999)),
+        first_niter_decay_(FieldOrDefaultVal(pars["Learning"], "FirstDecayAlphaAt", -1)),
+        second_niter_decay_(FieldOrDefaultVal(pars["Learning"], "SecondDecayAlphaAt", -1)),
+        first_decay_alpha_(FieldOrDefaultVal(pars["Learning"], "FirstDecayAlpha", 0.001)),
+        second_decay_alpha_(FieldOrDefaultVal(pars["Learning"], "SecondDecayAlpha", 0.001)),
         epscut_(FieldOrDefaultVal(pars["Learning"], "Epscut", 1.0e-7)),
         I_(0, 1) {
     npar_ = -1;
     niter_ = 0;
     niter_reset_ = -1;
+      assert(second_niter_decay_ >= first_niter_decay_);
 
     PrintParameters();
   }
@@ -90,6 +100,17 @@ class AdaMax : public AbstractStepper {
   void Update(const Eigen::VectorXd &grad, Eigen::VectorXd &pars) override {
     assert(npar_ > 0);
 
+      if (first_niter_decay_ > 0 && niter_ >= first_niter_decay_){
+//          Reset();
+          alpha_ = first_decay_alpha_;
+          first_niter_decay_ = second_niter_decay_;
+          first_decay_alpha_ = second_decay_alpha_;
+          if (mynode_ == 0) {
+              std::cout << "Decrease Learning rate to : " << alpha_
+                        << std::endl;
+          }
+      }
+
     mt_ = beta1_ * mt_ + (1. - beta1_) * grad;
 
     for (int i = 0; i < npar_; i++) {
@@ -101,6 +122,7 @@ class AdaMax : public AbstractStepper {
         niter_ = 1;
       }
     }
+
 
     double eta = alpha_ / (1. - std::pow(beta1_, niter_));
     for (int i = 0; i < npar_; i++) {
@@ -114,6 +136,17 @@ class AdaMax : public AbstractStepper {
 
   void Update(const Eigen::VectorXcd &grad, Eigen::VectorXcd &pars) override {
     assert(npar_ == 2 * pars.size());
+
+      if (first_niter_decay_ > 0 && niter_ >= first_niter_decay_){
+  //        Reset();
+          alpha_ = first_decay_alpha_;
+          first_niter_decay_ = second_niter_decay_;
+          first_decay_alpha_ = second_decay_alpha_;
+          if (mynode_ == 0) {
+              std::cout << "Decrease Learning rate to : " << alpha_
+                        << std::endl;
+          }
+      }
 
     for (int i = 0; i < pars.size(); i++) {
       mt_(2 * i) = beta1_ * mt_(2 * i) + (1. - beta1_) * grad(i).real();
@@ -134,6 +167,7 @@ class AdaMax : public AbstractStepper {
       }
     }
 
+
     double eta = alpha_ / (1. - std::pow(beta1_, niter_));
     for (int i = 0; i < pars.size(); i++) {
       pars(i) -= eta * mt_(2 * i) / ut_(2 * i);
@@ -144,6 +178,7 @@ class AdaMax : public AbstractStepper {
   void Reset() override {
     ut_ = Eigen::VectorXd::Zero(npar_);
     mt_ = Eigen::VectorXd::Zero(npar_);
+    first_niter_decay_ -= niter_;
     niter_ = 0;
   }
 
