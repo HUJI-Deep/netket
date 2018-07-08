@@ -51,7 +51,6 @@ public:
   // Json constructor
   explicit AdaMax(const json &pars)
       : I_(0, 1) {
-  explicit AdaMax(const json &pars) : I_(0, 1) {
     npar_ = -1;
     niter_ = 0;
     niter_reset_ = -1;
@@ -175,10 +174,10 @@ public:
     beta1_ = FieldOrDefaultVal(pars[section], "Beta1", 0.9);
     beta2_ = FieldOrDefaultVal(pars[section], "Beta2", 0.999);
     epscut_ = FieldOrDefaultVal(pars[section], "Epscut", 1.0e-7);
-    first_niter_decay_(FieldOrDefaultVal(pars[section], "FirstDecayAlphaAt", -1)),
-    second_niter_decay_(FieldOrDefaultVal(pars[section], "SecondDecayAlphaAt", -1)),
-    first_decay_alpha_(FieldOrDefaultVal(pars[section], "FirstDecayAlpha", 0.001)),
-    second_decay_alpha_(FieldOrDefaultVal(pars[section], "SecondDecayAlpha", 0.001)),
+    first_niter_decay_ = FieldOrDefaultVal(pars[section], "FirstDecayAlphaAt", -1);
+    second_niter_decay_ = FieldOrDefaultVal(pars[section], "SecondDecayAlphaAt", -1);
+    first_decay_alpha_ = FieldOrDefaultVal(pars[section], "FirstDecayAlpha", 0.001);
+    second_decay_alpha_ = FieldOrDefaultVal(pars[section], "SecondDecayAlpha", 0.001);
   }
 };
 
