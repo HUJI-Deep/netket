@@ -50,11 +50,12 @@ class MetropolisLocal : public AbstractSampler<WfType> {
   typename WfType::LookupType lt_;
 
   int nstates_;
+  int baseseed_;
   std::vector<double> localstates_;
 
  public:
-  explicit MetropolisLocal(WfType &psi)
-      : psi_(psi), hilbert_(psi.GetHilbert()), nv_(hilbert_.Size()) {
+  explicit MetropolisLocal(WfType &psi, int baseseed)
+      : psi_(psi), hilbert_(psi.GetHilbert()), nv_(hilbert_.Size()), baseseed_(baseseed) {
     Init();
   }
 
@@ -75,7 +76,7 @@ class MetropolisLocal : public AbstractSampler<WfType> {
     nstates_ = hilbert_.LocalSize();
     localstates_ = hilbert_.LocalStates();
 
-    Seed();
+    Seed(baseseed_);
 
     Reset(true);
 
@@ -89,6 +90,7 @@ class MetropolisLocal : public AbstractSampler<WfType> {
     std::vector<int> seeds(totalnodes_);
 
     if (mynode_ == 0) {
+      std::cout << "# The Local Metropolis sampler seed is : "<< baseseed << std::endl;
       for (int i = 0; i < totalnodes_; i++) {
         seeds[i] = rd() + baseseed;
       }
@@ -102,9 +104,9 @@ class MetropolisLocal : public AbstractSampler<WfType> {
   void Reset(bool initrandom = false) override {
     if (initrandom) {
       hilbert_.RandomVals(v_, rgen_);
+      psi_.InitLookup(v_, lt_);
     }
 
-    psi_.InitLookup(v_, lt_);
 
     accept_ = Eigen::VectorXd::Zero(1);
     moves_ = Eigen::VectorXd::Zero(1);
