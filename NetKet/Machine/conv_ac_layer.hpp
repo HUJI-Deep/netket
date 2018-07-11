@@ -629,13 +629,11 @@ public:
         Eigen::array<long, 2> logsumexp_bcast_shape(
                 {1, number_of_input_channels_});
         output_tensor = lt.T(tensor_lookup_index_);
-//        cout << "output_tensor" << endl << output_tensor << endl;
         for (int h = 0; h < input_height_; ++h) {
             for (int w = 0; w < input_width_; ++w) {
                 if (!input_changed(h, w)) {
                     continue;
                 }
-  //              cout << h << "," << w << " changed" << endl;
                 for (int j = 0;
                      (j < kernel_height_) && (h + j < output_height_ + half_kernel_height_); ++j) {
                     int id_h = h + j - half_kernel_height_;
@@ -648,7 +646,6 @@ public:
                         if (id_w < 0){
                             continue;
                         }
-    //                    cout << "start update " << id_h << "," << id_w <<  endl;
                         single_element_wise_sum_ =
                                 input_tensor.chip(h, 1).chip(w, 1)
                                         .reshape(
@@ -669,9 +666,9 @@ public:
                         for (int c = 0; c < number_of_output_channels_; c++) {
                             output_tensor(c, id_h, id_w) +=
                                     single_logsumexp_input_channel_(c) -
-                                    lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, id_h, id_w);
+                                    lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - k - 1, id_h, id_w);
                             if (update_lookup){
-                                lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - w - 1, id_h, id_w) = single_logsumexp_input_channel_(c);
+                                lt.L_T(large_tensor_lookup_index_)(c, kernel_height_ - j - 1, kernel_width_ - k - 1, id_h, id_w) = single_logsumexp_input_channel_(c);
                             }
                         }
                     }
@@ -690,12 +687,14 @@ public:
 
 
     void to_json(json &j) const override {
-        j["Name"] = "RbmSpin";
+        j["Name"] = "ConvACLayer";
         j["number_of_output_channels"] = number_of_output_channels_;
         j["kernel_width"] = kernel_width_;
         j["kernel_height"] = kernel_height_;
         j["strides_width"] = strides_width_;
         j["strides_height"] = strides_height_;
+        j["padding_width"] = padding_width_;
+        j["padding_height"] = padding_height_;
         j["init_in_log_space"] = init_in_log_space_;
         j["normalize_input_channels"] = normalize_input_channels_;
         VectorType params_vector(Npar());
@@ -708,8 +707,8 @@ public:
         assert_json_layer_name(pars);
         update_layer_properties(pars);
         create_tensors();
-        if (FieldExists(pars, "offsets_weights_")) {
-            SetParameters(pars["offsets_weights_"], 0);
+        if (FieldExists(pars, "offsets_weights")) {
+            SetParameters(pars["offsets_weights"], 0);
         }
     }
 };

@@ -128,6 +128,8 @@ public:
         values_tensors_[0] = input_tensor_swaped.swap_layout().reshape(Eigen::array<long, 3>{1, visible_height_, visible_width_});
         for (int i = 0; i < layers_.size(); ++i) {
             layers_[i]->LogVal(values_tensors_[i], values_tensors_[i+1]);
+//            InfoMessage() << "Layer " << i << " stats: max_abs = " << values_tensors_[i+1].abs().maximum() << ", min_abs = " << values_tensors_[i+1].abs().minimum()
+//                          << ", max_img = " << values_tensors_[i+1].imag().maximum()<< endl;
         }
         Eigen::Tensor<T, 0> sum_result(
                 values_tensors_[values_tensors_.size() - 1].sum());
@@ -257,11 +259,14 @@ public:
     void to_json(json &j) const override {
         j["Machine"]["Name"] = "ConvAC";
         j["Machine"]["Nvisible"] = number_of_visible_units_;
-        j["layers"] = json::array();
+        j["Machine"]["visible_width"] = visible_width_;
+        j["Machine"]["visible_height"] = visible_height_;
+        j["Machine"]["fast_lookup"] = fast_lookup_;
+        j["Machine"]["Layers"] = json::array();
         for (auto const &layer: layers_) {
             json layer_node;
             layer->to_json(layer_node);
-            j["layers"].push_back(layer_node);
+            j["Machine"]["Layers"].push_back(layer_node);
         }
     }
 
@@ -309,10 +314,14 @@ public:
         int input_dimension = 1;
         int input_height = visible_height_;
         int input_width = visible_width_;
+        values_tensors_.clear();
         values_tensors_.push_back(
                 TensorType(input_dimension, input_height, input_width));
         is_first_layer_one_hot_ = false;
         int i = 0;
+        layers_.clear();
+        input_gradient_tensors_.clear();
+        input_changed_.clear();
         for (auto const &layer: pars["Machine"]["Layers"]) {
             if (FieldVal(layer, "Name") == "ConvACLayer") {
                 layers_.push_back(std::unique_ptr<ConvACLayer<T>>(

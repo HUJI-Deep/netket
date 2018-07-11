@@ -47,7 +47,7 @@ public:
     }
 
     void to_json(json &j) const override {
-
+        j["Name"] = "ToOneHotLayer";
     }
 
     int Npar() const override {
