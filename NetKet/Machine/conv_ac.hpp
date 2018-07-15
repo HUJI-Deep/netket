@@ -19,6 +19,7 @@
 #include "conv_ac_layer.hpp"
 #include "to_one_hot_layer.hpp"
 #include "add_bias_layer.hpp"
+#include "sum_pooling_layer.hpp"
 #include <cmath>
 
 namespace netket {
@@ -394,6 +395,11 @@ public:
                 layers_.push_back(std::unique_ptr<AddBiasLayer<T>>(
                         new AddBiasLayer<T>(layer, input_dimension, input_height,
                                              input_width)));
+            }
+            else if (FieldVal(layer, "Name") == "SumPoolingLayer") {
+                layers_.push_back(std::unique_ptr<SumPoolingLayer<T>>(
+                        new SumPoolingLayer<T>(layer, input_dimension, input_height,
+                                            input_width)));
             }
             else {
                 if (my_mpi_node_ == 0) {

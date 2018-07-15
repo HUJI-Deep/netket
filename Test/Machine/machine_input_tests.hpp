@@ -68,7 +68,7 @@ std::vector<netket::json> GetMachineInputs() {
                             {"padding_height", 0},
                             {"strides_width", 1},
                             {"strides_height", 1},{"init_in_log_space", false}, {"normalize_input_channels", false},
-                            {"number_of_output_channels", 1}}
+                            {"number_of_output_channels", 1}}, {{"Name", "SumPoolingLayer"}}
             }}}},
             {"Hamiltonian", {{"Name", "Ising"}, {"h", 1.0}}}};
     input_tests.push_back(pars);
