@@ -18,6 +18,7 @@
 #include "abstract_machine.hpp"
 #include "conv_ac_layer.hpp"
 #include "to_one_hot_layer.hpp"
+#include "add_bias_layer.hpp"
 #include <cmath>
 
 namespace netket {
@@ -58,6 +59,7 @@ public:
     int visible_height_{};
     int my_mpi_node_{};
     bool is_first_layer_one_hot_{};
+    bool is_second_layer_add_bias_{};
     bool fast_lookup_{};
     vector<unique_ptr<AbstractLayer<T>>> layers_;
     vector<TensorType> values_tensors_;
@@ -159,21 +161,42 @@ public:
     void UpdateLookup(const VectorXd &orig_vector, const vector<int> &tochange,
                       const vector<double> &newconf, LookupType &lt) override {
         T orig_log_value = lt.V(0)(0);
-        if (is_first_layer_one_hot_ && fast_lookup_) {
-            input_changed_[1].setZero();
-            layers_[1]->UpdateLookupFromOneHotDiff(orig_vector, tochange, newconf,
-                                             input_changed_[1], values_tensors_[2],
-                                             lt);
-            for (int i = 2; i < layers_.size(); ++i) {
-                input_changed_[i].setZero();
-                layers_[i]->UpdateLookup(values_tensors_[i], input_changed_[i-1],
-                                           values_tensors_[i + 1], input_changed_[i], lt);
+        if (is_first_layer_one_hot_ && fast_lookup_ ) {
+            int first_layer_to_calc_diff;
+            if (is_second_layer_add_bias_){
+                VectorXd new_vector(orig_vector);
+                for (std::size_t s = 0; s < tochange.size(); s++) {
+                    new_vector[tochange[s]] = newconf[s];
+                }
+                input_buffer_ = new_vector;
+                TensorMap<Tensor<T, 2, RowMajor>> input_tensor_swaped(input_buffer_.data(), visible_height_,
+                                                                      visible_width_);
+                values_tensors_[0] = input_tensor_swaped.swap_layout().reshape(Eigen::array<long, 3>{1, visible_height_, visible_width_});
+                input_changed_[0].setZero();
+                input_changed_[1].setZero();
+                for (int i = 0; i < tochange.size(); ++i) {
+                    int h = tochange[i] % visible_height_;
+                    int w = tochange[i] / visible_height_;
+                    input_changed_[0](h, w) = true;
+                }
+                layers_[0]->UpdateLookup(values_tensors_[0], input_changed_[0],
+                                           values_tensors_[1], input_changed_[1], lt);
+                first_layer_to_calc_diff = 1;
             }
-            Eigen::Tensor<T, 0> sum_result(
-                    values_tensors_[values_tensors_.size() - 1].sum());
-            lt.V(0)(0) = normalized(sum_result(0));
-            return;
+            else{
+                first_layer_to_calc_diff = 2;
+                input_changed_[2].setZero();
+                layers_[1]->UpdateLookupFromOneHotDiff(orig_vector, tochange, newconf,
+                                                 input_changed_[2], values_tensors_[2],
+                                                 lt);
+            }
+            for (int i = first_layer_to_calc_diff; i < layers_.size(); ++i) {
+                input_changed_[i+1].setZero();
+                layers_[i]->UpdateLookup(values_tensors_[i], input_changed_[i],
+                                           values_tensors_[i+1], input_changed_[i+1], lt);
+            }
         }
+
         VectorXd new_vector(orig_vector);
         for (std::size_t s = 0; s < tochange.size(); s++) {
             new_vector[tochange[s]] = newconf[s];
@@ -194,18 +217,45 @@ public:
         return logvaldiffs;
     }
 
-    T LogValDiff(const VectorXd &v, const vector<int> &tochange,
+    T LogValDiff(const VectorXd &orig_vector, const vector<int> &tochange,
                  const vector<double> &newconf, const LookupType &lt) override {
         T orig_log_value = lt.V(0)(0);
-        if (is_first_layer_one_hot_ && fast_lookup_) {
-            input_changed_[1].setZero();
-            layers_[1]->LogValFromOneHotDiff(v, tochange, newconf,
-                                             input_changed_[1], values_tensors_[2],
+        if (is_first_layer_one_hot_ && fast_lookup_ ) {
+            int first_layer_to_calc_diff;
+            if (is_second_layer_add_bias_){
+                VectorXd new_vector(orig_vector);
+                for (std::size_t s = 0; s < tochange.size(); s++) {
+                    new_vector[tochange[s]] = newconf[s];
+                }
+                input_buffer_ = new_vector;
+                for (std::size_t s = 0; s < tochange.size(); s++) {
+                    input_buffer_[tochange[s]] = newconf[s];
+                }
+                TensorMap<Tensor<T, 2, RowMajor>> input_tensor_swaped(input_buffer_.data(), visible_height_,
+                                                                      visible_width_);
+                values_tensors_[0] = input_tensor_swaped.swap_layout().reshape(Eigen::array<long, 3>{1, visible_height_, visible_width_});
+                input_changed_[0].setZero();
+                input_changed_[1].setZero();
+                for (int i = 0; i < tochange.size(); ++i) {
+                    int h = tochange[i] % visible_height_;
+                    int w = tochange[i] / visible_height_;
+                    input_changed_[0](h, w) = true;
+                }
+                layers_[0]->LogValFromDiff(values_tensors_[0], input_changed_[0],
+                                           values_tensors_[1], input_changed_[1], lt);
+                first_layer_to_calc_diff = 1;
+            }
+            else{
+                first_layer_to_calc_diff = 2;
+                input_changed_[2].setZero();
+                layers_[1]->LogValFromOneHotDiff(orig_vector, tochange, newconf,
+                                                 input_changed_[2], values_tensors_[2],
                                                  lt);
-            for (int i = 2; i < layers_.size(); ++i) {
-                input_changed_[i].setZero();
-                layers_[i]->LogValFromDiff(values_tensors_[i], input_changed_[i-1],
-                                           values_tensors_[i+1], input_changed_[i], lt);
+            }
+            for (int i = first_layer_to_calc_diff; i < layers_.size(); ++i) {
+                input_changed_[i+1].setZero();
+                layers_[i]->LogValFromDiff(values_tensors_[i], input_changed_[i],
+                                           values_tensors_[i+1], input_changed_[i+1], lt);
             }
             Eigen::Tensor<T, 0> sum_result(
                     values_tensors_[values_tensors_.size() - 1].sum());
@@ -213,7 +263,7 @@ public:
         }
 
 
-        VectorXd new_vector(v);
+        VectorXd new_vector(orig_vector);
         for (std::size_t s = 0; s < tochange.size(); s++) {
             new_vector[tochange[s]] = newconf[s];
         }
@@ -318,10 +368,12 @@ public:
         values_tensors_.push_back(
                 TensorType(input_dimension, input_height, input_width));
         is_first_layer_one_hot_ = false;
+        is_second_layer_add_bias_ = false;
         int i = 0;
         layers_.clear();
         input_gradient_tensors_.clear();
         input_changed_.clear();
+        input_changed_.push_back(Matrix<bool, Dynamic, Dynamic>(input_height, input_width));
         for (auto const &layer: pars["Machine"]["Layers"]) {
             if (FieldVal(layer, "Name") == "ConvACLayer") {
                 layers_.push_back(std::unique_ptr<ConvACLayer<T>>(
@@ -334,7 +386,16 @@ public:
                 layers_.push_back(std::unique_ptr<ToOneHotLayer<T>>(
                         new ToOneHotLayer<T>(layer, input_height,
                                              input_width)));
-            } else {
+            }
+            else if (FieldVal(layer, "Name") == "AddBiasLayer") {
+                if (i == 1) {
+                    is_second_layer_add_bias_ = true;
+                }
+                layers_.push_back(std::unique_ptr<AddBiasLayer<T>>(
+                        new AddBiasLayer<T>(layer, input_dimension, input_height,
+                                             input_width)));
+            }
+            else {
                 if (my_mpi_node_ == 0) {
                     cerr << "Unknown layers type : " << FieldVal(layer, "Name")
                          << endl;
@@ -345,7 +406,6 @@ public:
                 std::cout << "Adding Layer with " << layers_.back()->Npar()
                           << " params" << std::endl;
             }
-            input_changed_.push_back(Matrix<bool, Dynamic, Dynamic>(input_height, input_width));
             auto output_dims = layers_.back()->Noutput();
             input_dimension = output_dims[0];
             input_height = output_dims[1];
@@ -354,10 +414,10 @@ public:
                     TensorType(input_dimension, input_height, input_width));
             input_gradient_tensors_.push_back(
                     TensorType(input_dimension, input_height, input_width));
+            input_changed_.push_back(Matrix<bool, Dynamic, Dynamic>(input_height, input_width));
             ++i;
         }
         input_gradient_tensors_.back().setZero();
-        input_changed_.push_back(Matrix<bool, Dynamic, Dynamic>(input_height, input_width));
     }
 };
 }

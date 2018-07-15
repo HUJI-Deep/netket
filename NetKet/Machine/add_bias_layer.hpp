@@ -1,16 +1,5 @@
-// Copyright 2018 The Simons Foundation, Inc. - All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+#ifndef NETKET_ADD_BIAS_LAYER_HPP
+#define NETKET_ADD_BIAS_LAYER_HPP
 
 #include "abstract_layer.hpp"
 
@@ -20,13 +9,11 @@ using namespace Eigen;
 
 
 template<typename T>
-class ToOneHotLayer : public AbstractLayer<T> {
+class AddBiasLayer : public AbstractLayer<T> {
 
     int input_height_;
     int input_width_;
-
-    Tensor<T, 2> log_zero_{};
-    Tensor<T, 2> log_one_{};
+    int number_of_input_channels_;
 
 public:
 
@@ -37,17 +24,13 @@ public:
     using LookupType=typename ConvACLayer<T>::LookupType;
 
 
-    ToOneHotLayer(const json &pars, int input_height, int input_width) :
+    AddBiasLayer(const json &pars, int number_of_input_channels, int input_height, int input_width) :
             input_height_(input_height),
-            input_width_(input_width) {
-        log_zero_  = Tensor<T, 2>(input_height, input_width);
-        log_one_  = Tensor<T, 2>(input_height, input_width);
-        log_zero_.setConstant(-std::numeric_limits<double>::infinity());
-        log_one_.setZero();
+            input_width_(input_width), number_of_input_channels_(number_of_input_channels) {
     }
 
     void to_json(json &j) const override {
-        j["Name"] = "ToOneHotLayer";
+        j["Name"] = "AddBiasLayer";
     }
 
     int Npar() const override {
@@ -68,17 +51,17 @@ public:
     }
 
     Eigen::array<int, 3> Noutput() const override {
-        return Eigen::array<int, 3>{2, input_height_,
+        return Eigen::array<int, 3>{number_of_input_channels_ + 1, input_height_,
                                     input_width_};
     }
 
     void
     LogVal(const TensorType &input_tensor, TensorType &output_tensor) override {
-        assert(input_tensor.dimension(0) == 1);
-        auto two_d_input = input_tensor.chip(0,0);
-        auto is_one = two_d_input == T{1};
-        output_tensor.chip(0, 0) = is_one.select(log_one_, log_zero_);
-        output_tensor.chip(1, 0) = is_one.select(log_zero_, log_one_);
+        Eigen::array<pair<int, int>, 3> paddings;
+        paddings[0] = make_pair(0, 1);
+        paddings[1] = make_pair(0, 0);
+        paddings[2] = make_pair(0, 0);
+        output_tensor = input_tensor.pad(paddings);
     }
 
     void
@@ -102,19 +85,21 @@ public:
     }
 
     void
-    UpdateLookupFromOneHotDiff(const Eigen::VectorXd &input_tensor,
+    UpdateLookupFromOneHotDiff(const Eigen::VectorXd &input_vector,
                                const std::vector<int> &tochange,
                                const std::vector<double> &newconf,
                                Eigen::Matrix<bool, Eigen::Dynamic, Eigen::Dynamic> &out_to_change,
                                TensorType &output_tensor,
                                LookupType &lt) override{
-        assert(false);
+        LogValFromOneHotDiff(input_vector, tochange, newconf, out_to_change, output_tensor, lt);
     };
 
     void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient,
                 Eigen::Map<VectorType> &plat_offsets_grad,
                 TensorType &layer_gradient) override {
-        assert(false);
+        Eigen::array<int, 3> offsets = {0, 0, 0};
+        Eigen::array<int, 3> extents = {number_of_input_channels_, input_height_, input_width_};
+        layer_gradient = next_layer_gradient.slice(offsets, extents);
     }
 
     void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient,
@@ -128,6 +113,7 @@ public:
                               Matrix<bool, Dynamic, Dynamic> &out_to_change,
                               TensorType &output_tensor, const LookupType &lt) override{
         assert(false);
+
     }
 
     void LogValFromDiff(const TensorType &input_tensor, const Matrix<bool, Dynamic, Dynamic> &input_changed,
@@ -140,3 +126,5 @@ public:
 };
 
 }
+
+#endif //NETKET_ADD_BIAS_LAYER_HPP

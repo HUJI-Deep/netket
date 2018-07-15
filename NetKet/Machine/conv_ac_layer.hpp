@@ -48,6 +48,7 @@ class ConvACLayer : public AbstractLayer<T> {
 
     bool init_in_log_space_;
     bool normalize_input_channels_;
+    bool dirichlet_init_;
     int number_of_input_channels_;
     int input_height_;
     int input_width_;
@@ -170,10 +171,9 @@ class ConvACLayer : public AbstractLayer<T> {
         read_layer_param_from_json(pars, "strides_height", strides_height_);
         read_layer_param_from_json(pars, "padding_width", padding_width_);
         read_layer_param_from_json(pars, "padding_height", padding_height_);
-        read_layer_param_from_json(pars, "init_in_log_space",
-                                   init_in_log_space_);
-        read_layer_param_from_json(pars, "normalize_input_channels",
-                                   normalize_input_channels_);
+        init_in_log_space_ = FieldOrDefaultVal(pars, "init_in_log_space", false);
+        dirichlet_init_ = FieldOrDefaultVal(pars, "dirichlet_init", false);
+        normalize_input_channels_ = FieldOrDefaultVal(pars, "normalize_input_channels", false);
         output_height_ = dimension_out_size(input_height_,
                                             padding_height_, padding_height_,
                                             kernel_height_,
@@ -247,6 +247,27 @@ public:
         out_params_mapping = offsets_weights_;
     }
 
+    void NormalizeParameters(){
+        Eigen::array<long, 1> input_channel_axis({1});
+        Eigen::array<long, 4> logsumexp_shape{number_of_output_channels_, 1,
+                                              kernel_height_,
+                                              kernel_width_};
+        Eigen::array<long, 4> logsumexp_bcast_shape{1,
+                                                    number_of_input_channels_,
+                                                    1, 1};
+        auto max_per_input_channel = offsets_weights_.real().maximum(
+                input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
+        auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
+                logsumexp_shape).broadcast(logsumexp_bcast_shape);
+        auto logsumexp_input_channel = ((offsets_weights_.real() -
+                                         max_per_input_channel_broadcasted).exp().sum(
+                input_channel_axis).log() + max_per_input_channel).eval();
+        auto logsumexp_input_channel_broadcasted = logsumexp_input_channel.reshape(
+                logsumexp_shape).broadcast(logsumexp_bcast_shape);
+        offsets_weights_ = offsets_weights_.binaryExpr(
+                logsumexp_input_channel_broadcasted, MyMinusOp<T>());
+    }
+
     void SetParameters(const VectorType &pars, int start_idx) override {
         VectorType &non_const_pars = const_cast<VectorType &>(pars);
         Eigen::TensorMap<const Eigen::Tensor<T, 4>> pars_mapping(
@@ -254,24 +275,7 @@ public:
                 kernel_width_);
         offsets_weights_ = pars_mapping;
         if (normalize_input_channels_) {
-            Eigen::array<long, 1> input_channel_axis({1});
-            Eigen::array<long, 4> logsumexp_shape{number_of_output_channels_, 1,
-                                                  kernel_height_,
-                                                  kernel_width_};
-            Eigen::array<long, 4> logsumexp_bcast_shape{1,
-                                                        number_of_input_channels_,
-                                                        1, 1};
-            auto max_per_input_channel = offsets_weights_.real().maximum(
-                    input_channel_axis).cwiseMax(MINUS_INFINITY).eval();
-            auto max_per_input_channel_broadcasted = max_per_input_channel.reshape(
-                    logsumexp_shape).broadcast(logsumexp_bcast_shape);
-            auto logsumexp_input_channel = ((offsets_weights_.real() -
-                                             max_per_input_channel_broadcasted).exp().sum(
-                    input_channel_axis).log() + max_per_input_channel).eval();
-            auto logsumexp_input_channel_broadcasted = logsumexp_input_channel.reshape(
-                    logsumexp_shape).broadcast(logsumexp_bcast_shape);
-            offsets_weights_ = offsets_weights_.binaryExpr(
-                    logsumexp_input_channel_broadcasted, MyMinusOp<T>());
+            NormalizeParameters();
         }
     }
 
@@ -330,12 +334,20 @@ public:
 
     void InitRandomPars(std::default_random_engine &generator, double sigma) {
         Map<VectorType> par(offsets_weights_.data(), Npar());
-        netket::RandomGaussian<Map<VectorType>, true>(par, generator, sigma);
-        if (init_in_log_space_) {
-            par = par.unaryExpr(
-                    Eigen::internal::scalar_log_op<std::complex<double>>());
+        if (dirichlet_init_){
+            netket::RandomLogGamma<Map<VectorType>, true>(par, generator, sigma);
+        }
+        else{
+            netket::RandomGaussian<Map<VectorType>, true>(par, generator, sigma);
+            if (init_in_log_space_) {
+                par = par.unaryExpr(
+                        Eigen::internal::scalar_log_op<std::complex<double>>());
+            }
         }
         SetParameters(par, 0);
+        if (dirichlet_init_){
+            NormalizeParameters();
+        }
     }
 
     void DerLog(const TensorType &input_tensor, TensorType &next_layer_gradient,
